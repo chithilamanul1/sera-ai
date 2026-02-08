@@ -1,6 +1,6 @@
 import Order, { OrderStatus } from '@/models/Order';
 import Customer from '@/models/Customer';
-import Quote from '@/models/Quote';
+import { Quote } from '@/models/Quote';
 import { Finance } from '@/models/Finance';
 import { logToDiscord } from '@/lib/discord/logger';
 import { generateQuotePDF } from '@/lib/pdf-service';
