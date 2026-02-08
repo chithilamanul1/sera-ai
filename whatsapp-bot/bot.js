@@ -146,6 +146,12 @@ client.on('qr', (qr) => {
     console.log('');
     log('info', '(WhatsApp > Settings > Linked Devices > Link a Device)');
     console.log('\n');
+
+    // Also notify discord so we know a scan is needed
+    logToDiscord('warning', '🆕 WhatsApp Login Required!', {
+        message: 'A new QR code has been generated. Please check the Railway console logs to scan it.',
+        qr_string: qr // In case they want to use an external generator
+    });
 });
 
 // Authentication successful
