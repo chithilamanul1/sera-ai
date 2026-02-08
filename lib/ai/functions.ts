@@ -15,6 +15,17 @@ const INVENTORY: Record<string, boolean> = {
     "suzuki wagon r bumper": false,
 };
 
+/**
+ * Generate a Payment Link (Placeholder/Mock)
+ */
+export async function generatePaymentLink(amount: number, description: string, orderId: string) {
+    // In the future, this will call PayHere/Stripe API
+    const baseUrl = "https://sera.bot/pay";
+    const shortId = orderId.split('-').pop(); // Simple short ID
+    return `${baseUrl}/${shortId}?amt=${amount}&desc=${encodeURIComponent(description)}`;
+}
+
+
 // --- GOD MODE FUNCTIONS ---
 
 /**
@@ -23,7 +34,7 @@ const INVENTORY: Record<string, boolean> = {
 export async function routeTask(targetName: string, targetPhone: string, message: string, originalClientMsg: string) {
     console.log(`[ROUTE] Routing to ${targetName} (${targetPhone})`);
 
-    const globalAny = global as any;
+    const globalAny = global as Record<string, any>;
     if (globalAny.sendWhatsAppMessage) {
         await globalAny.sendWhatsAppMessage(targetPhone,
             `*New Task Routed by Sera*\n\n` +
@@ -133,6 +144,29 @@ export async function markAsPaid(staffName: string, amount?: number) {
     }
 }
 
+/**
+ * Request Payment from Customer
+ */
+export async function requestPayment(args: { amount: number, type: 'ADVANCE' | 'FULL', project_id: string, description: string }) {
+    console.log(`[PAYMENT] Requesting ${args.type} of ${args.amount} for ${args.project_id}`);
+
+    const payLink = await generatePaymentLink(args.amount, args.description, args.project_id);
+
+    const message = `*💳 Payment Required: ${args.type}*\n\n` +
+        `📦 **Project**: ${args.project_id}\n` +
+        `💰 **Amount**: LKR ${args.amount}\n\n` +
+        `👇 *Pay Securely Here*:\n${payLink}\n\n` +
+        `*Note*: Once paid, send the screenshot here! 💪`;
+
+    return {
+        success: true,
+        message: "Payment link generated.",
+        actions: [{ type: 'SEND_TEXT', to: 'CUSTOMER', text: message }],
+        link: payLink
+    };
+}
+
+
 // --- QUOTE WORKFLOW FUNCTIONS ---
 
 /**
@@ -159,8 +193,8 @@ export async function generateDraftQuote(clientName: string, clientPhone: string
     await newQuote.save();
 
     const devMessage = `*Review Needed*: New Draft Spec for ${clientName}. PDF generated. reply with price to finalize.`;
-    if ((global as any).sendWhatsAppMessage) {
-        await (global as any).sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, devMessage);
+    if (globalAny.sendWhatsAppMessage) {
+        await globalAny.sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, devMessage);
     }
 
     return {
@@ -252,8 +286,8 @@ export async function forwardToDesign(projectTitle: string, brief: string) {
 export async function forwardToMarketing(projectTitle: string, caption?: string) {
     await logFinance('EXPENSE', 350, projectTitle, 'Studio Vibes (Design Fee)', 'Design fee', 'SERVER_COST');
     const message = `*🚀 New Marketing Asset*\n\n📦 **Project**: ${projectTitle}\n📝 **Caption**: \n"${caption}"`;
-    if ((global as any).sendWhatsAppMessage) {
-        await (global as any).sendWhatsAppMessage(TEAM_ROLES.SKY_DESIGNERS, message);
+    if (globalAny.sendWhatsAppMessage) {
+        await globalAny.sendWhatsAppMessage(TEAM_ROLES.SKY_DESIGNERS, message);
     }
     return { success: true, message: "Forwarded to Sky Designers. Finance logged (-350)." };
 }

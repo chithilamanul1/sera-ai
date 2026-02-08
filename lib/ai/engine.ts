@@ -6,7 +6,8 @@ import {
     generateDraftQuote,
     finalizeQuote,
     signQuote,
-    markAsPaid
+    markAsPaid,
+    requestPayment
 } from './functions';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
@@ -170,6 +171,17 @@ export async function generateAIResponse(
                     case 'MARK_AS_PAID':
                         const paidRes = await markAsPaid(data.staff_name, data.amount);
                         finalResponseText = data.reply_to_owner || paidRes.message;
+                        break;
+
+                    case 'REQUEST_PAYMENT':
+                        const payRes = await requestPayment({
+                            amount: data.amount,
+                            type: data.type,
+                            project_id: data.project_id,
+                            description: data.description
+                        });
+                        if (payRes.actions) actions.push(...payRes.actions);
+                        finalResponseText = data.reply_to_user || "Payment link generated.";
                         break;
                 }
 
