@@ -9,7 +9,7 @@
  */
 
 import 'dotenv/config';
-import { Client, GatewayIntentBits, EmbedBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, EmbedBuilder, Events } from 'discord.js';
 import axios from 'axios';
 
 // ===============================================
@@ -231,7 +231,7 @@ const commands = {
 // EVENT HANDLERS
 // ===============================================
 
-client.once('ready', () => {
+client.once(Events.ClientReady, () => {
     console.log(`✅ Discord bot logged in as ${client.user.tag}`);
 
     // Set bot status
