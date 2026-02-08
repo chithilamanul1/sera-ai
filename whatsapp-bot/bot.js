@@ -137,12 +137,21 @@ if (MONGODB_URI) {
         }),
         puppeteer: {
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             protocolTimeout: 180000,
             args: [
-                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions'
             ]
-        }
+        },
+        authTimeoutMs: 60000, // Wait 60s for auth
+        qrMaxRetries: 5
     });
 
     client.on('remote_session_saved', () => {
@@ -156,12 +165,21 @@ if (MONGODB_URI) {
         }),
         puppeteer: {
             headless: true,
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
             protocolTimeout: 180000,
             args: [
-                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-first-run',
+                '--no-zygote',
+                '--single-process',
+                '--disable-extensions'
             ]
-        }
+        },
+        authTimeoutMs: 60000,
+        qrMaxRetries: 5
     });
 }
 
@@ -656,7 +674,9 @@ cron.schedule('0 6 * * *', async () => {
 // ===============================================
 
 log('info', 'Initializing WhatsApp connection (Microsoft Edge)...');
-client.initialize();
+setTimeout(() => {
+    client.initialize();
+}, 5000);
 
 cron.schedule('0 20 * * 0', async () => {
     log('info', '📊 Running Weekly Financial Report Cron...');
