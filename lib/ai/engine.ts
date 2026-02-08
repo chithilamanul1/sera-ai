@@ -140,13 +140,13 @@ export async function generateAIResponse(
 
                     case 'GENERATE_PORTFOLIO_CONTENT':
                         const captionRes = await generateSocialCaption(data.project_title || "Project");
-                        const designRes = await forwardToDesign(data.project_title || "Project", captionRes.designBrief, data.image_url || "");
+                        const designRes = await forwardToDesign(data.project_title || "Project", captionRes.designBrief);
                         actions.push({ type: 'PORTFOLIO_START', ...captionRes, ...designRes });
                         finalResponseText = data.reply_to_user || "Portfolio workflow started. Sent to Studio Vibes.";
                         break;
 
                     case 'FORWARD_DESIGN':
-                        const fwdDesignRes = await forwardToDesign(data.project_title, data.brief, data.image_url);
+                        const fwdDesignRes = await forwardToDesign(data.project_title, data.brief);
                         actions.push({ type: 'DESIGN_FORWARDED', ...fwdDesignRes });
                         finalResponseText = "Design brief forwarded.";
                         break;
