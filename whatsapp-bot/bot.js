@@ -15,11 +15,13 @@
 
 import 'dotenv/config';
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia, Location } = pkg;
+const { Client, LocalAuth, RemoteAuth, MessageMedia, Location } = pkg;
 import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import cron from 'node-cron';
 import moment from 'moment';
+import mongoose from 'mongoose';
+import { MongoStore } from 'wwebjs-mongo';
 
 // ===============================================
 // CONFIGURATION
@@ -28,6 +30,7 @@ import moment from 'moment';
 const SERANEX_API = process.env.SERANEX_API || 'http://localhost:3000/api/whatsapp/incoming';
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- EXAME MODE CONFIG ---
 const EXAM_DATE = '2026-05-18'; // O/L Exam Date (Placeholder)
@@ -98,8 +101,9 @@ async function logToDiscord(level, message, details = null) {
                 timestamp: new Date().toISOString()
             }]
         });
-    } catch (e) {
-        // Silent fail for Discord logging
+    } catch (err) {
+        // DO NOT use log() here to avoid infinite loop
+        console.error(`❌ [Discord Log Failed]: ${err.message}`);
     }
 }
 
@@ -107,38 +111,66 @@ async function logToDiscord(level, message, details = null) {
 // WHATSAPP CLIENT SETUP
 // ===============================================
 
+// ===============================================
+// INITIALIZE CLIENT
+// ===============================================
+
 log('info', 'Seranex Lanka WhatsApp Bot Starting...');
 log('info', `API Endpoint: ${SERANEX_API}`);
+if (DISCORD_CONSOLE_WEBHOOK) {
+    log('success', `Discord Logging Enabled: ${DISCORD_CONSOLE_WEBHOOK.substring(0, 40)}...`);
+} else {
+    log('warning', 'Discord Logging DISABLED (Webhook missing)');
+}
 
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: './session'
-    }),
-    puppeteer: {
-        headless: true,
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-        protocolTimeout: 180000, // Increase to 3 minutes
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--no-first-run',
-            '--no-zygote',
-            '--disable-gpu',
-            '--disable-extensions',
-            '--disable-web-security',
-            '--allow-running-insecure-content'
-        ]
-    }
-});
+let client;
+
+if (MONGODB_URI) {
+    log('info', 'Using MongoDB for Session Storage...');
+    await mongoose.connect(MONGODB_URI);
+    const store = new MongoStore({ mongoose: mongoose });
+
+    client = new Client({
+        authStrategy: new RemoteAuth({
+            store: store,
+            backupSyncIntervalMs: 300000
+        }),
+        puppeteer: {
+            headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            protocolTimeout: 180000,
+            args: [
+                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'
+            ]
+        }
+    });
+
+    client.on('remote_session_saved', () => {
+        log('success', 'Remote session saved to MongoDB!');
+    });
+} else {
+    log('warning', 'MONGODB_URI missing, falling back to LocalAuth (Session will lost on restart)');
+    client = new Client({
+        authStrategy: new LocalAuth({
+            dataPath: './session'
+        }),
+        puppeteer: {
+            headless: true,
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            protocolTimeout: 180000,
+            args: [
+                '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'
+            ]
+        }
+    });
+}
 
 // ===============================================
 // EVENT HANDLERS
 // ===============================================
 
 // QR Code for authentication
-client.on('qr', (qr) => {
+client.on('qr', async (qr) => {
     console.log('\n');
     log('info', '📱 Scan this QR code with WhatsApp:');
     console.log('Raw QR String (Copy/Paste to a generator if needed):', qr);
@@ -149,10 +181,10 @@ client.on('qr', (qr) => {
     console.log('\n');
 
     // Also notify discord so we know a scan is needed
-    logToDiscord('warning', '🆕 WhatsApp Login Required!', {
-        message: 'A new QR code has been generated. If the Railway logs look distorted, copy the raw string below and paste it into a QR generator.',
+    await logToDiscord('warning', '🆕 WhatsApp Login Required!', {
+        message: 'A new QR code has been generated. If the Railway logs look distorted, click the link below to get a clean QR code.',
         qr_string: qr,
-        generator_url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
+        click_here_to_scan: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
     });
 });
 
