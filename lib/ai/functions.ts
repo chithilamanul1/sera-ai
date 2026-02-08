@@ -89,10 +89,10 @@ export async function logFinance(
             amount,
             project,
             sourceUser,
-            staffMember,
+            staffMember: staffMember || undefined,
             status,
             description,
-            paidAt: status === 'PAID' ? new Date() : null
+            paidAt: status === 'PAID' ? new Date() : undefined
         });
 
         // --- AUTOMATIC LIABILITY CREATION ---
