@@ -152,7 +152,7 @@ export async function generateAIResponse(
                         break;
 
                     case 'FORWARD_TO_MARKETING':
-                        const fwdMktRes = await forwardToMarketing(data.project_title, data.image_url, data.caption);
+                        const fwdMktRes = await forwardToMarketing(data.project_title, data.caption);
                         actions.push({ type: 'MARKETING_FORWARDED', ...fwdMktRes });
                         finalResponseText = "Forwarded to Sky Designers for marketing check.";
                         break;
