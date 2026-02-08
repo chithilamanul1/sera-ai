@@ -141,16 +141,18 @@ const client = new Client({
 client.on('qr', (qr) => {
     console.log('\n');
     log('info', '📱 Scan this QR code with WhatsApp:');
+    console.log('Raw QR String (Copy/Paste to a generator if needed):', qr);
     console.log('');
-    qrcode.generate(qr, { small: true });
+    qrcode.generate(qr, { small: false }); // Try standard size for better alignment in Railway
     console.log('');
     log('info', '(WhatsApp > Settings > Linked Devices > Link a Device)');
     console.log('\n');
 
     // Also notify discord so we know a scan is needed
     logToDiscord('warning', '🆕 WhatsApp Login Required!', {
-        message: 'A new QR code has been generated. Please check the Railway console logs to scan it.',
-        qr_string: qr // In case they want to use an external generator
+        message: 'A new QR code has been generated. If the Railway logs look distorted, copy the raw string below and paste it into a QR generator.',
+        qr_string: qr,
+        generator_url: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
     });
 });
 
