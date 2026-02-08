@@ -35,6 +35,10 @@ RUN npm run build
 WORKDIR /app/whatsapp-bot
 RUN npm install
 
+# Setup Discord Bot dependencies
+WORKDIR /app/discord-bot
+RUN npm install
+
 # Install PM2 globally to manage multiple processes
 RUN npm install -g pm2
 

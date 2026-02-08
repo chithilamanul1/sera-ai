@@ -12,7 +12,7 @@ module.exports = {
             }
         },
         {
-            name: 'seranex-bot',
+            name: 'seranex-whatsapp',
             script: 'npm',
             args: 'start',
             cwd: './whatsapp-bot',
@@ -20,9 +20,20 @@ module.exports = {
                 ...process.env,
                 NODE_ENV: 'production'
             },
-            // Restart rule: if it crashes, restart it
             restart_delay: 5000,
             max_restarts: 10
+        },
+        {
+            name: 'seranex-discord',
+            script: 'npm',
+            args: 'start',
+            cwd: './discord-bot',
+            env: {
+                ...process.env,
+                NODE_ENV: 'production'
+            },
+            restart_delay: 5000,
+            max_restarts: 5
         }
     ]
 };

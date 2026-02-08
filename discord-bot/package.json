@@ -1,0 +1,15 @@
+{
+    "name": "seranex-discord-bot",
+    "version": "1.0.0",
+    "description": "Discord control bot for Seranex Lanka AI System",
+    "main": "bot.js",
+    "type": "module",
+    "scripts": {
+        "start": "node bot.js"
+    },
+    "dependencies": {
+        "axios": "^1.6.0",
+        "discord.js": "^14.14.1",
+        "dotenv": "^16.3.1"
+    }
+}
