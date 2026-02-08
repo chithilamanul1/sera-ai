@@ -7,7 +7,8 @@ import {
     finalizeQuote,
     signQuote,
     markAsPaid,
-    requestPayment
+    requestPayment,
+    triggerReminder
 } from './functions';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
@@ -16,7 +17,7 @@ import keyRotator from '../seranex/gemini-keys';
 export interface AIResponse {
     text: string;
     usedModel: string;
-    actions?: any[]; // For routing, finance, etc.
+    actions?: Record<string, unknown>[]; // For routing, finance, etc.
 }
 
 /**
@@ -47,8 +48,8 @@ function detectLanguageStyle(text: string): "SINHALA_SCRIPT" | "SINGLISH" | "ENG
 
 export async function generateAIResponse(
     userMessage: string,
-    history: { role: 'user' | 'assistant' | 'system'; content: string }[],
-    contextData: { phone?: string, customerName?: string; customerId?: any } = {},
+    history: { role: 'user' | 'assistant' | 'system' | 'model'; content: string }[],
+    contextData: { phone?: string, customerName?: string; customerId?: string | undefined } = {},
     systemPromptOverride?: string // Added for dynamic prompts
 ): Promise<AIResponse> {
 
@@ -63,7 +64,7 @@ export async function generateAIResponse(
 
     let finalResponseText = "";
     let finalModel = MODEL_GEMINI;
-    const actions: any[] = [];
+    const actions: Record<string, any>[] = [];
 
     try {
         console.log(`[AI] Using ${MODEL_GEMINI}...`);
@@ -182,6 +183,16 @@ export async function generateAIResponse(
                         });
                         if (payRes.actions) actions.push(...payRes.actions);
                         finalResponseText = data.reply_to_user || "Payment link generated.";
+                        break;
+
+                    case 'TRIGGER_REMINDER':
+                        const remindRes = await triggerReminder({
+                            target: data.target,
+                            phone: data.phone,
+                            project_id: data.project_id,
+                            reason: data.reason
+                        });
+                        finalResponseText = data.reply_to_user || remindRes.message;
                         break;
                 }
 

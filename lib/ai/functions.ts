@@ -5,7 +5,8 @@ import { Finance } from '@/models/Finance';
 import { logToDiscord } from '@/lib/discord/logger';
 import { generateQuotePDF } from '@/lib/pdf-service';
 import { TEAM_ROLES } from '../seranex/roles';
-// import ChatLog from '@/models/ChatLog'; // Keep in mind for later use
+
+const getGlobal = () => global as Record<string, any>;
 
 // Mock Inventory Data
 const INVENTORY: Record<string, boolean> = {
@@ -34,9 +35,8 @@ export async function generatePaymentLink(amount: number, description: string, o
 export async function routeTask(targetName: string, targetPhone: string, message: string, originalClientMsg: string) {
     console.log(`[ROUTE] Routing to ${targetName} (${targetPhone})`);
 
-    const globalAny = global as Record<string, any>;
-    if (globalAny.sendWhatsAppMessage) {
-        await globalAny.sendWhatsAppMessage(targetPhone,
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(targetPhone,
             `*New Task Routed by Sera*\n\n` +
             `📝 *Message*: ${message}\n` +
             `👤 *Client Said*: "${originalClientMsg}"`
@@ -46,6 +46,26 @@ export async function routeTask(targetName: string, targetPhone: string, message
 
     return { success: true, message: `[SIMULATION] Routed to ${targetName}: ${message}` };
 }
+
+/**
+ * Trigger a reminder to staff for a stuck project
+ */
+export async function triggerReminder(args: { target: string, phone: string, project_id: string, reason: string }) {
+    console.log(`[REMINDER] Reminding ${args.target} about ${args.project_id}`);
+
+    const message = `*⏰ Reminder from Sera*\n\n` +
+        `Hey ${args.target}! 👋\n` +
+        `Customer gen message ekak awa ${args.project_id} gena. \n` +
+        `Reason: "${args.reason}"\n\n` +
+        `Puluwan ikmanata update ekak danna! 💪`;
+
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(args.phone, message);
+    }
+
+    return { success: true, message: `Reminder sent to ${args.target}.` };
+}
+
 
 /**
  * Log a financial transaction
@@ -193,8 +213,8 @@ export async function generateDraftQuote(clientName: string, clientPhone: string
     await newQuote.save();
 
     const devMessage = `*Review Needed*: New Draft Spec for ${clientName}. PDF generated. reply with price to finalize.`;
-    if (globalAny.sendWhatsAppMessage) {
-        await globalAny.sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, devMessage);
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, devMessage);
     }
 
     return {
@@ -277,8 +297,8 @@ export async function generateSocialCaption(projectTitle: string) {
 
 export async function forwardToDesign(projectTitle: string, brief: string) {
     const message = `*🎨 New Design Request*\n\n📦 **Project**: ${projectTitle}\n📝 **Brief**: ${brief}`;
-    if ((global as any).sendWhatsAppMessage) {
-        await (global as any).sendWhatsAppMessage(TEAM_ROLES.STUDIO_VIBES, message);
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(TEAM_ROLES.STUDIO_VIBES, message);
     }
     return { success: true, message: "Design brief sent to Studio Vibes." };
 }
@@ -286,16 +306,16 @@ export async function forwardToDesign(projectTitle: string, brief: string) {
 export async function forwardToMarketing(projectTitle: string, caption?: string) {
     await logFinance('EXPENSE', 350, projectTitle, 'Studio Vibes (Design Fee)', 'Design fee', 'SERVER_COST');
     const message = `*🚀 New Marketing Asset*\n\n📦 **Project**: ${projectTitle}\n📝 **Caption**: \n"${caption}"`;
-    if (globalAny.sendWhatsAppMessage) {
-        await globalAny.sendWhatsAppMessage(TEAM_ROLES.SKY_DESIGNERS, message);
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(TEAM_ROLES.SKY_DESIGNERS, message);
     }
     return { success: true, message: "Forwarded to Sky Designers. Finance logged (-350)." };
 }
 
 export async function handleFeedbackLoop(feedback: string, projectTitle: string) {
     const message = `*⚠️ Design Needs Revision*\n\n📦 **Project**: ${projectTitle}\n🗣️ **Feedback**: "${feedback}"`;
-    if ((global as any).sendWhatsAppMessage) {
-        await (global as any).sendWhatsAppMessage(TEAM_ROLES.STUDIO_VIBES, message);
+    if (getGlobal().sendWhatsAppMessage) {
+        await getGlobal().sendWhatsAppMessage(TEAM_ROLES.STUDIO_VIBES, message);
     }
     return { success: true, message: `Feedback sent to Studio Vibes: ${feedback}` };
 }
