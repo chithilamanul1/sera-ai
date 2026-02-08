@@ -36,6 +36,15 @@ const client = new Client({
     ]
 });
 
+// Handle login errors gracefully
+client.on('error', (error) => {
+    console.error('❌ Discord Client Error:', error.message);
+    if (error.message.includes('disallowed intents')) {
+        console.error('⚠️ Please enable MESSAGE CONTENT INTENT in Discord Developer Portal!');
+        console.error('👉 https://discord.com/developers/applications → Bot → Privileged Gateway Intents');
+    }
+});
+
 // ===============================================
 // BOT STATE
 // ===============================================
