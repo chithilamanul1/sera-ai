@@ -27,7 +27,10 @@ import { MongoStore } from 'wwebjs-mongo';
 // CONFIGURATION
 // ===============================================
 
-const SERANEX_API = process.env.SERANEX_API || 'http://localhost:3000/api/whatsapp/incoming';
+const SERANEX_API = process.env.SERANEX_API ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN
+        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/whatsapp/incoming`
+        : 'http://localhost:3000/api/whatsapp/incoming');
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
 const MONGODB_URI = process.env.MONGODB_URI;
