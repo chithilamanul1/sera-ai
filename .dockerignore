@@ -1,0 +1,17 @@
+node_modules
+.next
+.git
+.env*
+*.log
+Dockerfile
+.dockerignore
+.github
+whatsapp-bot/node_modules
+whatsapp-bot/.wwebjs_auth
+whatsapp-bot/.wwebjs_cache
+public/pdf-quotes/*.pdf
+CVS
+.svn
+.hg
+.lock-wscript
+.DS_Store
