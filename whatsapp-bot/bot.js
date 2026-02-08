@@ -29,6 +29,10 @@ const SERANEX_API = process.env.SERANEX_API || 'http://localhost:3000/api/whatsa
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
 
+// --- EXAME MODE CONFIG ---
+const EXAM_DATE = '2026-05-18'; // O/L Exam Date (Placeholder)
+const OWNER_PHONE = '94772148511'; // You
+
 // Feature toggles (inspired by KHAN-MD)
 const CONFIG = {
     AUTO_TYPING: true,           // Show typing indicator when processing
@@ -355,6 +359,20 @@ client.on('message', async (message) => {
                 aiReply = response.data.reply || '';
                 mood = response.data.mood || 'neutral';
                 aiActions = response.data.actions || [];
+
+                // --- 🚨 HIGH PRIORITY MOOD ALERT ---
+                if (mood === 'angry' || mood === 'frustrated') {
+                    const riyonPhone = '94768290477'; // Riyon
+                    const alertMsg = `🚨 *Mood Alert!* 🚨\n\nCustomer *${customerName}* (${phoneNumber}) is feeling *${mood.toUpperCase()}*.\n\n💬 *Last Msg*: "${messageText}"\n\nPlease check ASAP!`;
+
+                    try {
+                        await client.sendMessage(riyonPhone + '@c.us', alertMsg);
+                        log('info', `🚨 Alerted Riyon about angry customer: ${customerName}`);
+                    } catch (err) {
+                        log('error', `Failed to alert Riyon: ${err.message}`);
+                    }
+                }
+
                 break; // Success!
 
             } catch (error) {
@@ -570,15 +588,35 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // ===============================================
+// CRON JOBS (EXAM & DAILY TASKS)
+// ===============================================
+
+// 1. Morning Motivation & Exam Countdown (6:00 AM)
+cron.schedule('0 6 * * *', async () => {
+    const today = moment();
+    const examDay = moment(EXAM_DATE);
+    const daysLeft = examDay.diff(today, 'days');
+
+    const message = `🌅 *Good Morning, Boss!* \n\n` +
+        `📚 *Exam Countdown*: **${daysLeft} Days** left until O/Ls!\n` +
+        `🎯 *Focus Mode*: ACTIVATED.\n\n` +
+        `"Success is the sum of small efforts, repeated day in and day out." 💪\n` +
+        `Let's crush it today!`;
+
+    try {
+        await client.sendMessage(OWNER_PHONE + '@c.us', message);
+        log('info', 'Sent exam countdown message');
+    } catch (err) {
+        log('error', `Failed to send countdown: ${err.message}`);
+    }
+});
+
+// ===============================================
 // START
 // ===============================================
 
 log('info', 'Initializing WhatsApp connection (Microsoft Edge)...');
 client.initialize();
-
-// ===============================================
-// SUNDAY REPORT CRON (Every Sunday at 8 PM)
-// ===============================================
 
 cron.schedule('0 20 * * 0', async () => {
     log('info', '📊 Running Weekly Financial Report Cron...');
