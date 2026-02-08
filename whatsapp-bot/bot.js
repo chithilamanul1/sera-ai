@@ -194,19 +194,26 @@ if (MONGODB_URI) {
 client.on('qr', async (qr) => {
     console.log('\n');
     log('info', '📱 Scan this QR code with WhatsApp:');
-    console.log('Raw QR String (Copy/Paste to a generator if needed):', qr);
     console.log('');
-    qrcode.generate(qr, { small: false }); // Try standard size for better alignment in Railway
+    qrcode.generate(qr, { small: false });
     console.log('');
     log('info', '(WhatsApp > Settings > Linked Devices > Link a Device)');
     console.log('\n');
 
+    // Generate QR image URL
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
+
     // Also notify discord so we know a scan is needed
-    await logToDiscord('warning', '🆕 WhatsApp Login Required!', {
-        message: 'A new QR code has been generated. If the Railway logs look distorted, click the link below to get a clean QR code.',
-        qr_string: qr,
-        click_here_to_scan: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
+    await logToDiscord('warning', '🚨 SCAN NOW! WhatsApp Login Required!', {
+        message: '⚡ A new QR code has been generated. SCAN WITHIN 20 SECONDS!',
+        scan_this_link: qrImageUrl
     });
+
+    // Also log the direct link to console for easy access
+    console.log('');
+    console.log('🔗 DIRECT QR LINK (Click or copy to browser):');
+    console.log(qrImageUrl);
+    console.log('');
 });
 
 // Authentication successful
