@@ -6,6 +6,7 @@ module.exports = {
             args: 'start',
             cwd: './',
             env: {
+                ...process.env,
                 NODE_ENV: 'production',
                 PORT: process.env.PORT || 3000
             }
@@ -16,6 +17,7 @@ module.exports = {
             args: 'start',
             cwd: './whatsapp-bot',
             env: {
+                ...process.env,
                 NODE_ENV: 'production'
             },
             // Restart rule: if it crashes, restart it
