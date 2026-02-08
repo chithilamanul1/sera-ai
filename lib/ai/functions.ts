@@ -5,7 +5,7 @@ import { Finance } from '@/models/Finance';
 import { logToDiscord } from '@/lib/discord/logger';
 import { generateQuotePDF } from '@/lib/pdf-service';
 import { TEAM_ROLES } from '../seranex/roles';
-import Conversation from '@/models/Conversation';
+// import ChatLog from '@/models/ChatLog'; // Keep in mind for later use
 
 // Mock Inventory Data
 const INVENTORY: Record<string, boolean> = {
@@ -23,8 +23,9 @@ const INVENTORY: Record<string, boolean> = {
 export async function routeTask(targetName: string, targetPhone: string, message: string, originalClientMsg: string) {
     console.log(`[ROUTE] Routing to ${targetName} (${targetPhone})`);
 
-    if ((global as any).sendWhatsAppMessage) {
-        await (global as any).sendWhatsAppMessage(targetPhone,
+    const globalAny = global as any;
+    if (globalAny.sendWhatsAppMessage) {
+        await globalAny.sendWhatsAppMessage(targetPhone,
             `*New Task Routed by Sera*\n\n` +
             `📝 *Message*: ${message}\n` +
             `👤 *Client Said*: "${originalClientMsg}"`
@@ -94,7 +95,7 @@ export async function markAsPaid(staffName: string, amount?: number) {
     console.log(`[FINANCE] Marking payment for ${staffName} (Amount: ${amount || 'any'}) as PAID`);
 
     try {
-        const query: any = {
+        const query: Record<string, any> = {
             staffMember: { $regex: new RegExp(staffName, 'i') },
             status: 'PENDING',
             type: 'EXPENSE'
@@ -240,7 +241,7 @@ export async function generateSocialCaption(projectTitle: string) {
     };
 }
 
-export async function forwardToDesign(projectTitle: string, brief: string, imageUrl: string) {
+export async function forwardToDesign(projectTitle: string, brief: string) {
     const message = `*🎨 New Design Request*\n\n📦 **Project**: ${projectTitle}\n📝 **Brief**: ${brief}`;
     if ((global as any).sendWhatsAppMessage) {
         await (global as any).sendWhatsAppMessage(TEAM_ROLES.STUDIO_VIBES, message);
@@ -285,13 +286,13 @@ export async function executeCheckStock(args: { item_name: string, vehicle_model
     return { available: false, message: "Hariata check karaganna ba." };
 }
 
-export async function executePlaceOrder(args: { items: any[], delivery_address: string, customer_name: string, phone: string }) {
+export async function executePlaceOrder(args: { items: { name: string, quantity?: number }[], delivery_address: string, customer_name: string, phone: string }) {
     try {
-        const customer = await Conversation.findOne({ phone: args.phone });
+        const customer = await Customer.findOne({ phoneNumber: args.phone });
         const newOrder = await Order.create({
             customer: customer ? customer._id : null,
             shortId: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-            items: args.items.map((i: any) => ({ description: i.name, quantity: i.quantity || 1 })),
+            items: args.items.map((i) => ({ description: i.name, quantity: i.quantity || 1 })),
             status: OrderStatus.PENDING,
             notes: `Address: ${args.delivery_address}`
         });
