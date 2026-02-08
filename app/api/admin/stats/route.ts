@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/db';
 import Order, { OrderStatus } from '@/models/Order';
 import ChatLog from '@/models/ChatLog';

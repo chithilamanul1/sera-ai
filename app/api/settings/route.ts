@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/db';
 import SystemSettings from '@/models/SystemSettings';
 import { logToDiscord } from '@/lib/discord/logger';

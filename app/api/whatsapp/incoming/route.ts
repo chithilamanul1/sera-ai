@@ -18,6 +18,8 @@ import axios from 'axios';
 // FORCE IPv4 to fix "Error fetching" / Timeout issues with Gemini/OpenAI
 dns.setDefaultResultOrder('ipv4first');
 
+export const dynamic = 'force-dynamic'; // Prevent static generation during build
+
 import OpenAI from 'openai';
 import dbConnect from '@/lib/db';
 import {
@@ -58,7 +60,7 @@ import { generateAIResponse } from '@/lib/ai/engine';
 
 // Initialize OpenAI
 const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
+    apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-for-build-only'
 });
 
 // Config
@@ -285,7 +287,7 @@ export async function POST(req: NextRequest) {
         // Generate AI response
         let reply = '';
         let usedModel = '';
-        let aiActions: any[] = [];
+        let aiActions: Record<string, unknown>[] = [];
 
         // 2. Call AI (OpenAI -> Gemini -> Fallback)
         try {

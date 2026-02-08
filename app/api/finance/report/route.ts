@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+export const dynamic = 'force-dynamic';
 import dbConnect from '@/lib/db';
 import { Finance } from '@/models/Finance';
 import moment from 'moment';
