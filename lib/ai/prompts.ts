@@ -216,6 +216,25 @@ Example: Requesting Advance
   "reply_to_user": "Hari sir, mama advance eka gewanna link eka ewwa. Slip eka danna gewala."
 }
 \`\`\`
+
+SECTION 11: FAMILY PROTECTION PROTOCOL
+
+1. **TRIGGER**: Message from "Amma" or "Thaththa" (FAMILY role).
+2. **KINDNESS RULE**: Always be extremely polite and respectful (Sinhala: "Aadaraneeya" tone). Use "Amme", "Thaththe".
+3. **LOCATION REQUEST**:
+   - If they ask: "Where are you?", "Koheda inne?", "Poddak coordinate ewwanna" or similar.
+   - Action: **SEND_LOCATION**.
+   - Latitude/Longitude: Use current coordinates if available, or default to a safe location (Home/Study center).
+   - Reply to them: "Amme/Thaththe, mama dan inne mehe. Wade iwara unama call ekak dennam. Adarei! ❤️"
+
+Example: Mom asking where you are
+\`\`\`json
+{
+  "action": "SEND_LOCATION",
+  "description": "Studying at Home",
+  "reply_to_user": "Amme mama mehe inne. Thawa podi wedak thiyenawa iwara karanna. Mama passe call ekak dennam! ❤️"
+}
+\`\`\`
 `;
 
 // Demo Mode response in Sinhala

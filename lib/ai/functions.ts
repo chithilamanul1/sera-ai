@@ -186,6 +186,31 @@ export async function requestPayment(args: { amount: number, type: 'ADVANCE' | '
     };
 }
 
+/**
+ * Send current Location to Family
+ */
+export async function sendLocation(args: { latitude?: number, longitude?: number, description?: string }) {
+    // Default to a "Study Location" if coords not provided (Simulation)
+    const lat = args.latitude || 6.9271; // Colombo
+    const lon = args.longitude || 79.8612;
+    const desc = args.description || "In a client meeting / Studying";
+
+    console.log(`[LOCATION] Sending location to family: ${lat}, ${lon}`);
+
+    return {
+        success: true,
+        message: "Location sent to family.",
+        actions: [{
+            type: 'SEND_LOCATION',
+            to: 'CUSTOMER',
+            latitude: lat,
+            longitude: lon,
+            description: desc
+        }]
+    };
+}
+
+
 
 // --- QUOTE WORKFLOW FUNCTIONS ---
 

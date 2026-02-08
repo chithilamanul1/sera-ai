@@ -15,7 +15,7 @@
 
 import 'dotenv/config';
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, MessageMedia } = pkg;
+const { Client, LocalAuth, MessageMedia, Location } = pkg;
 import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import cron from 'node-cron';
@@ -335,6 +335,7 @@ client.on('message', async (message) => {
         // ===============================================
         let aiReply = '';
         let mood = 'neutral';
+        let aiActions = [];
         let retries = CONFIG.MAX_RETRIES;
 
         while (retries > 0) {
@@ -351,8 +352,9 @@ client.on('message', async (message) => {
                     }
                 });
 
-                aiReply = response.data.reply || 'Sorry, something went wrong.';
+                aiReply = response.data.reply || '';
                 mood = response.data.mood || 'neutral';
+                aiActions = response.data.actions || [];
                 break; // Success!
 
             } catch (error) {
@@ -428,8 +430,44 @@ client.on('message', async (message) => {
                 log('error', `TTS Failed: ${err.message}`);
                 await message.reply(aiReply); // Fallback to text
             }
-        } else {
+        } else if (aiReply.trim() !== '') {
             await message.reply(aiReply);
+        }
+
+        // ===============================================
+        // PROCESS ACTIONS (GOD MODE)
+        // ===============================================
+        for (const action of aiActions) {
+            try {
+                log('info', `⚡ Executing Action: ${action.type}`);
+
+                switch (action.type) {
+                    case 'SEND_TEXT':
+                        await client.sendMessage(action.to === 'CUSTOMER' ? message.from : action.to, action.text);
+                        break;
+
+                    case 'SEND_LOCATION':
+                        const loc = new Location(action.latitude, action.longitude, action.description);
+                        await client.sendMessage(action.to === 'CUSTOMER' ? message.from : action.to, loc);
+                        break;
+
+                    case 'SEND_FILE':
+                        // Assuming path is accessible to the bot (or URL)
+                        // If it's a local path, read it and convert to MessageMedia
+                        // For now, let's assume the API provides a URL or base64
+                        if (action.path) {
+                            // Future implementation for file sending
+                            log('warning', `File sending action detected for ${action.path} - skipped (implement file access)`);
+                        }
+                        break;
+
+                    case 'NOTIFY_STAFF':
+                        await client.sendMessage(action.phone + '@c.us', action.message_content);
+                        break;
+                }
+            } catch (actionErr) {
+                log('error', `Failed to execute action ${action.type}: ${actionErr.message}`);
+            }
         }
 
     } catch (error) {

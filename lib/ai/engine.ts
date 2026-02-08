@@ -8,7 +8,14 @@ import {
     signQuote,
     markAsPaid,
     requestPayment,
-    triggerReminder
+    requestPayment,
+    triggerReminder,
+    generateSocialCaption,
+    forwardToDesign,
+    forwardToMarketing,
+    handleFeedbackLoop,
+    approveMarketing,
+    sendLocation
 } from './functions';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
@@ -64,7 +71,7 @@ export async function generateAIResponse(
 
     let finalResponseText = "";
     let finalModel = MODEL_GEMINI;
-    const actions: Record<string, any>[] = [];
+    const actions: Record<string, unknown>[] = [];
 
     try {
         console.log(`[AI] Using ${MODEL_GEMINI}...`);
@@ -194,6 +201,16 @@ export async function generateAIResponse(
                         });
                         finalResponseText = data.reply_to_user || remindRes.message;
                         break;
+
+                    case 'SEND_LOCATION':
+                        const locRes = await sendLocation({
+                            latitude: data.latitude,
+                            longitude: data.longitude,
+                            description: data.description
+                        });
+                        if (locRes.actions) actions.push(...locRes.actions);
+                        finalResponseText = data.reply_to_user || "Location sent.";
+                        break;
                 }
 
             } catch (jsonError) {
@@ -205,7 +222,7 @@ export async function generateAIResponse(
             finalResponseText = rawText;
         }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
         console.error(`[AI] Error:`, error);
         finalResponseText = "Sorry, technical error.";
         finalModel = 'error';
@@ -236,7 +253,7 @@ async function callGeminiRobust(
         system_instruction: {
             parts: [{ text: sysPrompt || SYSTEM_PROMPT }]
         },
-        contents: [] as any[],
+        contents: [] as { role: string; parts: { text: string }[] }[],
         generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 800
@@ -300,8 +317,8 @@ async function callGeminiRobust(
                 throw new Error('Empty response from Gemini');
             }
 
-        } catch (error: any) {
-            const errorMsg = error.response?.data?.error?.message || error.message;
+        } catch (error: unknown) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
             console.log(`[GeminiEngine] ⚠️ Fail (${modelName}): ${errorMsg.substring(0, 100)}...`);
 
             totalAttempts--;

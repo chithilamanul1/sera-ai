@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         await dbConnect();
         const body = await req.json();
 
-        const { phone, message, name, isVoice, voiceData } = body;
+        const { phone, message, name, voiceData } = body;
 
         if (!phone || !message) {
             return NextResponse.json({ error: 'Missing phone or message' }, { status: 400 });
@@ -285,6 +285,7 @@ export async function POST(req: NextRequest) {
         // Generate AI response
         let reply = '';
         let usedModel = '';
+        let aiActions: any[] = [];
 
         // 2. Call AI (OpenAI -> Gemini -> Fallback)
         try {
@@ -302,10 +303,11 @@ export async function POST(req: NextRequest) {
 
             reply = aiResponse.text;
             usedModel = aiResponse.usedModel;
+            aiActions = aiResponse.actions || [];
 
             // Log actions if any
-            if (aiResponse.actions && aiResponse.actions.length > 0) {
-                console.log(`[Seranex] ⚡ Executed ${aiResponse.actions.length} God Mode actions.`);
+            if (aiActions.length > 0) {
+                console.log(`[Seranex] ⚡ Captured ${aiActions.length} God Mode actions.`);
             }
 
         } catch (aiError: any) {
@@ -369,7 +371,8 @@ export async function POST(req: NextRequest) {
             model: usedModel,
             mood,
             orderStatus: conv.orderStatus,
-            responseTime
+            responseTime,
+            actions: aiActions
         });
 
     } catch (error: unknown) {
