@@ -252,16 +252,17 @@ function initializeHandlers() {
     let qrCount = 0;
     client.on('qr', async (qr) => {
         qrCount++;
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
+
         console.log('\n');
-        log('info', `📱 QR Code generated (Count: ${qrCount}/10). Requesting Pairing Code...`);
+        log('info', `📱 WhatsApp QR Code generated (Attempt ${qrCount})`);
+        console.log('🔗 QR Link:', qrImageUrl);
+        console.log('\n');
 
         // Auto-wipe session if it stuck in QR loop
         if (qrCount > 8) {
             log('error', '🚨 QR Loop detected. Wiping session to force reset...');
             try {
-                // This is a partial reset, ideally we would delete the folder but 
-                // RemoteAuth manages it via Mongo. Let's force a mongo wipe if we could,
-                // but for now, we just notify and suggest a manual clear if possible.
                 await logToDiscord('error', 'WHATSAPP SESSION STUCK', {
                     reason: 'QR Loop detected (10+ attempts)',
                     action_taken: 'Notifying admin to restart with CLEAN_SESSION=true'
@@ -269,48 +270,12 @@ function initializeHandlers() {
             } catch { }
         }
 
-        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
-        console.log('🔗 QR Link:', qrImageUrl);
-        console.log('\n');
-
-        // EXPLICITLY REQUEST PAIRING CODE
-        // Cloud modules (RegistrationUtils) take time to load. 
-        // We wait 45s, then try up to 3 times with 15s between retries.
-        setTimeout(async () => {
-            let attempts = 3;
-            const requestWithRetry = async () => {
-                try {
-                    if (!client || !OWNER_PHONE) return;
-
-                    log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (Attempt ${4 - attempts}/3)...`);
-                    const code = await client.requestPairingCode(OWNER_PHONE);
-
-                    if (code) {
-                        log('success', `✅ Pairing Code received: ${code}`);
-                    }
-                } catch (err) {
-                    attempts--;
-                    log('error', `Pairing attempt failed: ${err.message}`);
-
-                    if (attempts > 0) {
-                        log('info', `🔄 Retrying in 15 seconds... (${attempts} attempts left)`);
-                        setTimeout(requestWithRetry, 15000);
-                    } else {
-                        await logToDiscord('error', 'Pairing Code Request EXHAUSTED', {
-                            error: err.message,
-                            tip: 'Browser modules failed to load in time. Please scan the QR Link above manually.',
-                            phone_attempted: OWNER_PHONE
-                        });
-                    }
-                }
-            };
-            requestWithRetry();
-        }, 45000);
-
-        await logToDiscord('info', '📱 QR Code Available', {
-            message: 'Pairing code has been requested (30s delay). If it fails, use this link or paste raw data into a QR generator.',
+        // Send to Discord IMMEDIATELY
+        await logToDiscord('info', '🔐 WhatsApp Login QR Available', {
+            message: 'Scan this QR code with your phone (Linked Devices) to log in.',
             qr_link: qrImageUrl,
-            raw_qr_data: qr // Full raw string for manual use
+            count: qrCount,
+            channel_target: '1470388177867903018'
         });
     });
 
