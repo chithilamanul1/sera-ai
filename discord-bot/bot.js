@@ -122,7 +122,7 @@ const commands = {
             const res = await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
             apiHealth = res.status === 200 ? '✅ Online' : '⚠️ Degraded';
             stats.apiStatus = 'online';
-        } catch {
+        } catch (_err) {
             apiHealth = '❌ Offline';
             stats.apiStatus = 'offline';
         }
@@ -163,7 +163,8 @@ const commands = {
                 { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
                 { name: '`!sera broadcast <message>`', value: '📢 Send newsletter to all customers', inline: false },
                 { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false },
-                { name: '`!sera key <0-10|master> <key>`', value: '🔑 Update Gemini API key dynamically', inline: false }
+                { name: '`!sera key <0-10|master> <key>`', value: '🔑 Update a single Gemini API key', inline: false },
+                { name: '`!sera keys <key1> <key2> ...`', value: '📦 Bulk replace ALL keys (old ones move to backup)', inline: false }
             )
             .setFooter({ text: 'Use commands in the control channel' })
             .setTimestamp();
@@ -243,9 +244,9 @@ const commands = {
         pm2.connect((err) => {
             if (err) return message.reply(`❌ PM2 Error: ${err.message}`);
 
-            pm2.describe(appId, (err, desc) => {
+            pm2.describe(appId, (_err2, desc) => {
                 pm2.disconnect();
-                if (err || !desc || desc.length === 0) return message.reply(`❌ Process **${appId}** not found.`);
+                if (_err2 || !desc || desc.length === 0) return message.reply(`❌ Process **${appId}** not found.`);
 
                 const logPath = isErrorLog ? desc[0].pm2_env.pm_err_log_path : desc[0].pm2_env.pm_out_log_path;
 
@@ -279,10 +280,10 @@ const commands = {
         const appId = args[0];
         if (!appId) return message.reply('❌ Specify ID.');
 
-        pm2.connect((err) => {
-            pm2.stop(appId, (err) => {
+        pm2.connect((_err) => {
+            pm2.stop(appId, (_err2) => {
                 pm2.disconnect();
-                message.reply(err ? `❌ Error: ${err.message}` : `🛑 Stopped **${appId}**`);
+                message.reply(_err2 ? `❌ Error: ${_err2.message}` : `🛑 Stopped **${appId}**`);
             });
         });
     },
@@ -292,21 +293,21 @@ const commands = {
         const appId = args[0];
         if (!appId) return message.reply('❌ Specify ID.');
 
-        pm2.connect((err) => {
-            pm2.start(appId, (err) => {
+        pm2.connect((_err) => {
+            pm2.start(appId, (_err2) => {
                 pm2.disconnect();
-                message.reply(err ? `❌ Error: ${err.message}` : `🚀 Started **${appId}**`);
+                message.reply(_err2 ? `❌ Error: ${_err2.message}` : `🚀 Started **${appId}**`);
             });
         });
     },
 
     async pm2(message) {
-        pm2.connect((err) => {
-            if (err) return message.reply(`❌ PM2 Connect Error: ${err.message}`);
+        pm2.connect((_err) => {
+            if (_err) return message.reply(`❌ PM2 Connect Error: ${_err.message}`);
 
-            pm2.list((err, list) => {
+            pm2.list((_err2, list) => {
                 pm2.disconnect();
-                if (err) return message.reply(`❌ PM2 List Error: ${err.message}`);
+                if (_err2) return message.reply(`❌ PM2 List Error: ${_err2.message}`);
 
                 const embed = new EmbedBuilder()
                     .setColor(0x00D4AA)
@@ -337,12 +338,12 @@ const commands = {
         const appId = args[0];
         if (!appId) return message.reply('❌ Please specify a process ID or name (e.g. `!sera restart 0` or `!sera restart seranex-api`)');
 
-        pm2.connect((err) => {
-            if (err) return message.reply(`❌ PM2 Connect Error: ${err.message}`);
+        pm2.connect((_err) => {
+            if (_err) return message.reply(`❌ PM2 Connect Error: ${_err.message}`);
 
-            pm2.restart(appId, (err) => {
+            pm2.restart(appId, (_err2) => {
                 pm2.disconnect();
-                if (err) return message.reply(`❌ PM2 Restart Error: ${err.message}`);
+                if (_err2) return message.reply(`❌ PM2 Restart Error: ${_err2.message}`);
                 message.reply(`✅ Successfully requested restart for process: **${appId}**`);
             });
         });
@@ -415,7 +416,7 @@ const commands = {
                         message: broadcastMsg
                     });
                     success++;
-                } catch (err) {
+                } catch (_err) {
                     failed++;
                 }
 
@@ -437,9 +438,9 @@ const commands = {
         if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
 
         const index = args[0]; // 0, 1, 2... or 'master'
-        const keyValue = args[1];
+        const newKeyValue = args[1];
 
-        if (!index || !keyValue) {
+        if (!index || !newKeyValue) {
             return message.reply('❌ Usage: `!sera key <0-10|master> <NEW_KEY>`');
         }
 
@@ -447,17 +448,42 @@ const commands = {
 
         try {
             const res = await axios.post(`${API_URL}/api/settings`, {
-                geminiKeys: { [dbKey]: keyValue }
+                geminiKeys: { [dbKey]: newKeyValue }
             });
 
             if (res.status === 200) {
-                await message.reply(`✅ API Key **${index}** updated successfully! The system will pick it up within 5 minutes or on next request.`);
+                await message.reply(`✅ API Key **${index}** updated successfully!`);
                 await logToChannel('success', 'Gemini Key Updated', { index, by: message.author.tag });
             } else {
                 await message.reply(`❌ Failed to update key: ${res.data.error || 'Unknown error'}`);
             }
         } catch (err) {
             await message.reply(`❌ API Error: ${err.message}`);
+        }
+    },
+
+    async keys(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+
+        if (args.length === 0) {
+            return message.reply('❌ Usage: `!sera keys <key1> <key2> ...`');
+        }
+
+        const statusMsg = await message.reply('🔄 Processing bulk key replacement...');
+
+        try {
+            const res = await axios.post(`${API_URL}/api/settings`, {
+                bulkKeys: args
+            });
+
+            if (res.status === 200) {
+                await statusMsg.edit(`✅ **Bulk replacement successful!**\n📦 **${args.length}** new keys added.\n🗄️ Old keys moved to backup partition.`);
+                await logToChannel('success', 'Bulk Gemini Keys Updated', { count: args.length, by: message.author.tag });
+            } else {
+                await statusMsg.edit(`❌ Failed: ${res.data.error || 'Unknown error'}`);
+            }
+        } catch (err) {
+            await statusMsg.edit(`❌ API Error: ${err.message}`);
         }
     }
 };

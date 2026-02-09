@@ -4,7 +4,7 @@ import dbConnect from '@/lib/db';
 import SystemSettings from '@/models/SystemSettings';
 import { logToDiscord } from '@/lib/discord/logger';
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
     try {
         await dbConnect();
         let settings = await SystemSettings.findOne({ key: 'global' });
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
             settings = await SystemSettings.create({ key: 'global', isAiActive: true });
         }
         return NextResponse.json(settings);
-    } catch (error) {
+    } catch (_error) {
         return NextResponse.json({ error: 'Failed to fetch settings' }, { status: 500 });
     }
 }
@@ -21,22 +21,38 @@ export async function POST(req: NextRequest) {
     try {
         await dbConnect();
         const body = await req.json();
-        const { isAiActive, geminiKeys } = body;
+        const { isAiActive, geminiKeys, bulkKeys } = body;
 
         let settings = await SystemSettings.findOne({ key: 'global' });
         if (!settings) {
             settings = await SystemSettings.create({
                 key: 'global',
                 isAiActive: isAiActive !== undefined ? isAiActive : true,
-                geminiKeys: geminiKeys || {}
+                geminiKeys: geminiKeys || {},
+                backupGeminiKeys: {}
             });
         } else {
             if (isAiActive !== undefined) settings.isAiActive = isAiActive;
-            if (geminiKeys) {
-                // Merge or replace keys
+
+            // Handle bulk replacement
+            if (bulkKeys && Array.isArray(bulkKeys)) {
+                // Move current keys to backup partition
+                settings.backupGeminiKeys = { ...(settings.backupGeminiKeys || {}), ...(settings.geminiKeys || {}) };
+
+                // Set new keys
+                const newKeyMap: Record<string, string> = {};
+                bulkKeys.forEach((k: string, i: number) => {
+                    newKeyMap[`index_${i}`] = k;
+                });
+                settings.geminiKeys = newKeyMap;
+                settings.markModified('geminiKeys');
+                settings.markModified('backupGeminiKeys');
+            } else if (geminiKeys) {
+                // Individual update/merge
                 settings.geminiKeys = { ...(settings.geminiKeys || {}), ...geminiKeys };
                 settings.markModified('geminiKeys');
             }
+
             await settings.save();
         }
 
@@ -48,17 +64,27 @@ export async function POST(req: NextRequest) {
                 'WARN'
             );
         }
-        if (geminiKeys) {
+        if (bulkKeys) {
+            await logToDiscord(
+                'Bulk API Keys Updated',
+                `Dumped **${bulkKeys.length}** new keys. Old keys moved to backup partition.`,
+                'SUCCESS'
+            );
+        } else if (geminiKeys) {
             await logToDiscord(
                 'API Keys Updated',
-                `Gemini API Keys updated via Discord/Admin. Total keys now in DB: **${Object.keys(settings.geminiKeys).length}**`,
+                `Gemini API Keys updated. Total active: **${Object.keys(settings.geminiKeys).length}**`,
                 'INFO'
             );
         }
 
         return NextResponse.json(settings);
-    } catch (error: any) {
-        console.error("Settings Update Error:", error.message);
+    } catch (err: unknown) { // Changed 'error: any' to 'err: unknown'
+        if (err instanceof Error) {
+            console.error("Settings Update Error:", err.message);
+        } else {
+            console.error("Settings Update Error:", err);
+        }
         return NextResponse.json({ error: 'Failed to update settings' }, { status: 500 });
     }
 }

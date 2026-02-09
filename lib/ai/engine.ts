@@ -16,7 +16,7 @@ import {
     approveMarketing,
     sendLocation
 } from './functions';
-import { sendErrorToDiscord, notifyGeminiRateLimit } from '../seranex/notifications';
+import { notifyGeminiRateLimit } from '../seranex/notifications';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
 import keyRotator from '../seranex/gemini-keys';
@@ -407,5 +407,23 @@ async function callGeminiRobust(
         }
     }
 
-    throw new Error('All Gemini keys and models exhausted in Engine.');
+    // --- TIER 3: EMERGENCY PARTITION (Old/Backup Keys) ---
+    if (keyRotator.getTier3KeyCount() > 0) {
+        console.log(`[GeminiEngine] 🚨 Tier 2 exhausted. Trying Tier 3 (Backup Partition)...`);
+        for (let i = 0; i < keyRotator.getTier3KeyCount(); i++) {
+            const backupKey = keyRotator.getTier3Key(i);
+            const modelName = 'gemini-1.5-flash'; // Use the most robust/cheap model for emergency
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${backupKey}`;
+                const response = await axios.post(url, payload, { timeout: 15000, family: 4 });
+                if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    return { text: response.data.candidates[0].content.parts[0].text, model: `${modelName}-backup` };
+                }
+            } catch (_err) {
+                // Silently continue through backup pool
+            }
+        }
+    }
+
+    throw new Error('All Gemini keys (Primary, Backup, and Emergency) exhausted in Engine.');
 }

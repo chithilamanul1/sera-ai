@@ -39,9 +39,9 @@ async function transcribeWhisper(audioBase64: string): Promise<TranscriptionResu
             language: 'unknown',
             confidence: 1.0
         };
-    } catch (error: any) {
+    } catch (err: any) {
         if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-        console.error('[Whisper] ❌ Fallback failed:', error.message);
+        console.error('[Whisper] ❌ Fallback failed:', err.message);
         throw new Error('Both Gemini and OpenAI Whisper transcription failed.');
     }
 }
@@ -57,7 +57,7 @@ export async function transcribeVoice(
 
     try {
         return await transcribeGeminiFallback(audioBase64, mimeType);
-    } catch (geminiError) {
+    } catch (_geminiError) {
         console.log(` [Seranex] ⚠️ Gemini failed. Falling back to OPENAI WHISPER...`);
         return await transcribeWhisper(audioBase64);
     }
@@ -155,7 +155,34 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
         }
     }
 
-    throw new Error('All Gemini keys and models exhausted for voice.');
+    // --- TIER 3: EMERGENCY PARTITION ---
+    if (keyRotator.getTier3KeyCount() > 0) {
+        console.log(` [Seranex] 🎙️ Tier 2 exhausted. Trying Tier 3 (Backup Partition)...`);
+        for (let i = 0; i < keyRotator.getTier3KeyCount(); i++) {
+            const backupKey = keyRotator.getTier3Key(i);
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${backupKey}`;
+                const response = await axios.post(url, {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                            { text: "Transcribe precisely. Only return text." }
+                        ]
+                    }]
+                }, { timeout: 20000, family: 4 });
+
+                if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    const text = response.data.candidates[0].content.parts[0].text.trim();
+                    return { text, language: detectLanguage(text), confidence: 1.0 };
+                }
+            } catch (_err) {
+                // Continue pool
+            }
+        }
+    }
+
+    throw new Error('All Gemini keys (Primary, Backup, and Emergency) exhausted for voice.');
 }
 
 /**

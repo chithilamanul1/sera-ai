@@ -8,6 +8,7 @@ import dbConnect from '../db';
 
 class GeminiKeyRotator {
     private keys: string[] = [];
+    private backupKeys: string[] = []; // Tier 3 Fallback
     private currentIndex: number = 0;
     private masterKey: string = '';
     private lastRefreshed: number = 0;
@@ -46,8 +47,9 @@ class GeminiKeyRotator {
         try {
             await dbConnect();
             const settings = await SystemSettings.findOne({ key: 'global' });
-            if (settings?.geminiKeys) {
-                const dbKeys = settings.geminiKeys;
+            if (settings) {
+                const dbKeys = settings.geminiKeys || {};
+                const backupDbKeys = settings.backupGeminiKeys || {};
 
                 // Update Master Key if index_0 or master exists
                 if (dbKeys['master']) {
@@ -56,20 +58,26 @@ class GeminiKeyRotator {
                     this.masterKey = dbKeys['index_0'];
                 }
 
-                // Update whole keys array
+                // Update whole primary keys array
                 const newKeys: string[] = [];
-                // Collect keys in order index_0, index_1...
-                for (let i = 0; i <= 10; i++) {
+                for (let i = 0; i <= 20; i++) {
                     const key = dbKeys[`index_${i}`];
                     if (key) newKeys.push(key);
                 }
-
                 if (newKeys.length > 0) {
                     this.keys = newKeys;
                 }
 
+                // Update backup keys array (Partition)
+                const newBackupKeys: string[] = [];
+                for (let i = 0; i <= 20; i++) {
+                    const key = backupDbKeys[`index_${i}`];
+                    if (key) newBackupKeys.push(key);
+                }
+                this.backupKeys = newBackupKeys;
+
                 this.lastRefreshed = Date.now();
-                console.log(`[KeyRotator] 🔄 Keys updated from DB. Total: ${this.keys.length}`);
+                console.log(`[KeyRotator] 🔄 Keys updated from DB. Primary: ${this.keys.length}, Backup: ${this.backupKeys.length}`);
             }
         } catch (err) {
             console.error("[KeyRotator] Error refreshing from DB:", err);
@@ -88,6 +96,19 @@ class GeminiKeyRotator {
         if (this.keys.length === 0) return this.masterKey;
         const safeIndex = index % this.keys.length;
         return this.keys[safeIndex];
+    }
+
+    /**
+     * Get a key from the backup partition (Tier 3)
+     */
+    public getTier3Key(index: number): string {
+        if (this.backupKeys.length === 0) return '';
+        const safeIndex = index % this.backupKeys.length;
+        return this.backupKeys[safeIndex];
+    }
+
+    public getTier3KeyCount(): number {
+        return this.backupKeys.length;
     }
 
     public getKeyCount(): number {
