@@ -1,24 +1,30 @@
+// lib/pdf-service.ts
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
 
-interface QuoteData {
+export interface QuoteItem {
+    name: string;
+    price: number;
+}
+
+export interface QuoteData {
     id: string;
     clientName: string;
-    items: string[];
-    estimatedPrice?: number;
+    clientPhone?: string;
+    items: QuoteItem[];
+    total: number;
+    advance?: number;
+    notes?: string;
 }
 
 /**
- * Generate a PDF for a Quote (Draft or Final)
- * @param quoteData - Data for the quote
- * @param isFinal - If true, includes price. If false, shows TBD.
- * @returns Path to the generated PDF file
+ * Generate a Professional PDF for a Invoice/Quote
  */
-export async function generateQuotePDF(quoteData: QuoteData, isFinal: boolean = false): Promise<string> {
+export async function generateQuotePDF(data: QuoteData, type: 'QUOTATION' | 'INVOICE' = 'QUOTATION'): Promise<string> {
     return new Promise((resolve, reject) => {
         try {
-            const doc = new PDFDocument({ margin: 50 });
+            const doc = new PDFDocument({ margin: 50, size: 'A4' });
 
             // Ensure temp directory exists
             const tempDir = path.join(process.cwd(), 'public', 'temp');
@@ -26,99 +32,94 @@ export async function generateQuotePDF(quoteData: QuoteData, isFinal: boolean = 
                 fs.mkdirSync(tempDir, { recursive: true });
             }
 
-            const filename = isFinal
-                ? `Quote_Final_${quoteData.id}.pdf`
-                : `Spec_Sheet_${quoteData.id}.pdf`;
-
+            const filename = `${type}_${data.id}_${Date.now()}.pdf`;
             const filePath = path.join(tempDir, filename);
             const writeStream = fs.createWriteStream(filePath);
 
             doc.pipe(writeStream);
 
-            // --- HEADER ---
-            // Add Logo if available (placeholder for now)
-            // doc.image('public/logo.png', 50, 45, { width: 50 });
+            // --- THEME COLORS ---
+            const primaryColor = '#00D4AA'; // Seranex Teal
+            const secondaryColor = '#2C3E50';
 
-            doc.fillColor('#444444')
-                .fontSize(20)
-                .text('SERA AUTO SOLUTIONS', 50, 57, { align: 'center' })
-                .moveDown();
+            // --- HEADER & LOGO ---
+            doc.fillColor(primaryColor)
+                .font('Helvetica-Bold')
+                .fontSize(24)
+                .text('SERANEX LANKA', 50, 50)
+                .fontSize(10)
+                .font('Helvetica')
+                .fillColor(secondaryColor)
+                .text('Software & Web development Solutions', 50, 75);
+
+            doc.fontSize(20)
+                .fillColor(secondaryColor)
+                .font('Helvetica-Bold')
+                .text(type, 400, 50, { align: 'right' });
 
             doc.fontSize(10)
-                .text('Automated Web & AI Solutions', { align: 'center' })
-                .moveDown();
+                .font('Helvetica')
+                .text(`ID: ${data.id}`, 400, 75, { align: 'right' })
+                .text(`Date: ${new Date().toLocaleDateString()}`, 400, 90, { align: 'right' });
 
             // --- DIVIDER ---
-            doc.moveTo(50, 130).lineTo(550, 130).stroke();
+            doc.moveTo(50, 110).lineTo(550, 110).strokeColor(primaryColor).lineWidth(2).stroke();
 
             // --- CLIENT INFO ---
-            doc.moveDown();
-            doc.fontSize(12).fillColor('black').text(`Client: ${quoteData.clientName}`);
-            doc.text(`Project ID: ${quoteData.id}`);
-            doc.text(`Date: ${new Date().toLocaleDateString()}`);
+            doc.moveDown(2);
+            doc.fillColor('black').fontSize(12).font('Helvetica-Bold').text('BILL TO:', 50, 130);
+            doc.fontSize(10).font('Helvetica').text(data.clientName, 50, 145);
+            if (data.clientPhone) doc.text(`Phone: ${data.clientPhone}`, 50, 160);
 
-            // --- REQUIREMENTS ---
-            doc.moveDown();
-            doc.fontSize(14).text('Project Requirements / Scope of Work', { underline: true });
-            doc.moveDown();
+            // --- TABLE HEADER ---
+            doc.moveDown(3);
+            const tableTop = 200;
+            doc.fillColor(secondaryColor).fontSize(10).font('Helvetica-Bold').text('Description', 50, tableTop);
+            doc.text('Amount (LKR)', 400, tableTop, { align: 'right' });
 
-            quoteData.items.forEach(item => {
-                doc.fontSize(12).text(`• ${item}`, { indent: 20 });
-                doc.moveDown(0.5);
+            doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).strokeColor('#EEEEEE').lineWidth(1).stroke();
+
+            // --- ITEMS ---
+            doc.font('Helvetica');
+            let currentY = tableTop + 30;
+            data.items.forEach(item => {
+                doc.fillColor('black').fontSize(10).text(item.name, 50, currentY);
+                doc.text(item.price.toLocaleString(), 400, currentY, { align: 'right' });
+                currentY += 20;
+
+                // Page break if needed
+                if (currentY > 700) {
+                    doc.addPage();
+                    currentY = 50;
+                }
             });
 
-            // --- PRICE SECTION ---
-            doc.moveDown(2);
-            doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-            doc.moveDown();
+            // --- TOTALS ---
+            doc.moveTo(50, currentY + 10).lineTo(550, currentY + 10).strokeColor(primaryColor).lineWidth(1).stroke();
+            currentY += 25;
 
-            if (isFinal && quoteData.estimatedPrice) {
-                // Final Version for Client
-                doc.fontSize(16).fillColor('green')
-                    .text(`TOTAL ESTIMATE: LKR ${quoteData.estimatedPrice.toLocaleString()}.00`, { align: 'right' });
+            doc.fontSize(12).fillColor(secondaryColor).font('Helvetica-Bold').text('TOTAL:', 300, currentY);
+            doc.fillColor('black').text(`Rs. ${data.total.toLocaleString()}.00`, 400, currentY, { align: 'right' });
 
-                doc.moveDown();
-                doc.fontSize(10).fillColor('gray')
-                    .text('This quotation is valid for 14 days.', { align: 'right' });
-
-                // --- PERFORMANCE CLAUSE ---
-                doc.moveDown(2);
-                doc.fontSize(10).fillColor('black')
-                    .text('Clause 8.1: By transferring the 40% Advance Payment, the Client acknowledges that they have read, understood, and agreed to the terms of this proposal. A physical signature is not required for validity.', { width: 500 });
-
-                // --- SIGNATURE ---
-                doc.moveDown(2);
-                const sigPath = path.join(process.cwd(), 'assets', 'agency_signature.png');
-                if (fs.existsSync(sigPath)) {
-                    doc.image(sigPath, 400, doc.y, { width: 150 });
-                    doc.moveDown();
-                }
-                doc.fontSize(12).text('Authorized Signature', 400, doc.y + 10);
-                doc.fontSize(10).text(`Date: ${new Date().toLocaleDateString()}`, 400, doc.y + 25);
-
-            } else {
-                // Draft Version for Developer
-                doc.fontSize(16).fillColor('red')
-                    .text(`PRICE: PENDING ESTIMATION (TBD)`, { align: 'right' });
-
-                doc.moveDown();
-                doc.fontSize(10).fillColor('gray')
-                    .text('Internal Document - Waiting for Developer Validation', { align: 'right' });
-
-                // --- DRAFT WATERMARK ---
-                doc.save();
-                doc.rotate(45, { origin: [300, 400] });
-                doc.fontSize(100).fillColor('red').opacity(0.1).text('DRAFT', 100, 300);
-                doc.restore();
-
-                doc.moveDown(2);
-                doc.fontSize(12).fillColor('red').text('PENDING APPROVAL - NOT VALID', 400, doc.y);
+            if (data.advance) {
+                currentY += 20;
+                doc.fontSize(10).fillColor('gray').text('Advance Required:', 300, currentY);
+                doc.text(`Rs. ${data.advance.toLocaleString()}.00`, 400, currentY, { align: 'right' });
             }
 
+            // --- BANK DETAILS ---
+            doc.moveDown(4);
+            doc.fontSize(12).fillColor(primaryColor).text('PAYMENT DETAILS', 50, doc.y, { underline: true });
+            doc.fontSize(10).fillColor('black');
+            doc.text('Bank: HNB Bank');
+            doc.text('Branch: Seeduwa');
+            doc.text('Account Name: BJS Fernando');
+            doc.text('Account No: 209020108826');
+
             // --- FOOTER ---
-            const bottom = doc.page.height - 50;
-            doc.fontSize(10).fillColor('gray')
-                .text('Generated by Sera AI Agent', 50, bottom, { align: 'center', width: 500 });
+            const footerY = 750;
+            doc.fontSize(8).fillColor('gray').text('This is a computer-generated document. No signature required.', 50, footerY, { align: 'center', width: 500 });
+            doc.text('Contact: +94 76 829 0477 | Email: seranexlanka@gmail.com', 50, footerY + 10, { align: 'center', width: 500 });
 
             doc.end();
 

@@ -160,6 +160,7 @@ const commands = {
                 { name: '`!sera mute <phone>`', value: '📴 Mute AI for a customer', inline: false },
                 { name: '`!sera unmute <phone>`', value: '🔊 Unmute AI for a customer', inline: false },
                 { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
+                { name: '`!sera broadcast <message>`', value: '📢 Send newsletter to all customers', inline: false },
                 { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false }
             )
             .setFooter({ text: 'Use commands in the control channel' })
@@ -378,6 +379,55 @@ const commands = {
             }
         } catch (err) {
             await message.reply(`❌ API Error: ${err.message}`);
+        }
+    },
+
+    async broadcast(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+        const broadcastMsg = args.join(' ');
+        if (!broadcastMsg) return message.reply('❌ Specify message: `!sera broadcast Hello everyone!`');
+
+        const statusMsg = await message.reply('📡 Fetching customer list...');
+
+        try {
+            const res = await axios.get(`${API_URL}/api/whatsapp/customers`);
+            const phones = res.data.phones || [];
+
+            if (phones.length === 0) {
+                return statusMsg.edit('❌ No customers found in database.');
+            }
+
+            await statusMsg.edit(`📢 Starting broadcast to **${phones.length}** customers... 🚀`);
+
+            let success = 0;
+            let failed = 0;
+
+            for (const phone of phones) {
+                try {
+                    // Use the existing WhatsApp sendMessage action logic via bot.js
+                    // We can achieve this by sending a "manual" reply through the BOT itself
+                    // or by exposing a direct send-message API.
+                    // Let's assume bot.js catches actions. We'll send it as a dedicated broadcast request.
+                    await axios.post(`${API_URL}/api/whatsapp/broadcast`, {
+                        phone,
+                        message: broadcastMsg
+                    });
+                    success++;
+                } catch (err) {
+                    failed++;
+                }
+
+                // Progress update every 10 messages
+                if ((success + failed) % 10 === 0) {
+                    await statusMsg.edit(`📢 Progress: **${success + failed}/${phones.length}** (Success: ${success}, Failed: ${failed})`);
+                }
+            }
+
+            await statusMsg.edit(`✅ **Broadcast Complete!**\n📊 Sent to: **${success}**\n❌ Failed: **${failed}**\nTotal: **${phones.length}**`);
+            await logToChannel('info', 'Broadcast Sent', { by: message.author.tag, total: phones.length, success, failed });
+
+        } catch (err) {
+            await statusMsg.edit(`❌ Broadcast Failed: ${err.message}`);
         }
     }
 };

@@ -16,10 +16,12 @@
 import 'dotenv/config';
 import pkg from 'whatsapp-web.js';
 const { Client, LocalAuth, RemoteAuth, MessageMedia, Location } = pkg;
-// Removed unused qrcode-terminal import
+// Removed unused qrcode-terminal import { Client, LocalAuth, MessageMedia, Location } from 'whatsapp-web.js';
+import qrcode from 'qrcode-terminal';
 import axios from 'axios';
-import cron from 'node-cron';
-import moment from 'moment';
+import fs from 'fs';
+import path from 'path';
+import express from 'express';
 import mongoose from 'mongoose';
 import { MongoStore } from 'wwebjs-mongo';
 
@@ -215,6 +217,31 @@ async function startBot() {
                 qrMaxRetries: 15
             });
         }
+
+        // ===============================================
+        // INTERNAL MANAGEMENT SERVER (For API/Discord)
+        // ===============================================
+        const app = express();
+        app.use(express.json());
+
+        app.post('/send-message', async (req, res) => {
+            const { phone, message: text } = req.json();
+            if (!client) return res.status(503).json({ error: 'Client not ready' });
+
+            try {
+                const formattedPhone = phone.includes('@c.us') ? phone : `${phone}@c.us`;
+                await client.sendMessage(formattedPhone, text);
+                log('send', `Manual/Broadcast message sent to ${phone}`);
+                res.json({ success: true });
+            } catch (err) {
+                log('error', `Failed to send manual message: ${err.message}`);
+                res.status(500).json({ success: false, error: err.message });
+            }
+        });
+
+        app.listen(3001, () => {
+            log('success', '📡 Internal Management Server running on port 3001');
+        });
 
         initializeHandlers();
         log('info', 'Initializing WhatsApp Client...');
@@ -641,12 +668,30 @@ function initializeHandlers() {
                             break;
 
                         case 'SEND_FILE':
-                            // Assuming path is accessible to the bot (or URL)
-                            // If it's a local path, read it and convert to MessageMedia
-                            // For now, let's assume the API provides a URL or base64
                             if (action.path) {
-                                // Future implementation for file sending
-                                log('warning', `File sending action detected for ${action.path} - skipped (implement file access)`);
+                                try {
+                                    // Handle Absolute Paths (Local)
+                                    if (fs.existsSync(action.path)) {
+                                        const media = MessageMedia.fromFilePath(action.path);
+                                        await client.sendMessage(action.to === 'CUSTOMER' ? message.from : action.to, media, {
+                                            caption: action.caption || ''
+                                        });
+                                        log('success', `File sent: ${action.path}`);
+                                    }
+                                    // Handle URLs
+                                    else if (action.path.startsWith('http')) {
+                                        const media = await MessageMedia.fromUrl(action.path);
+                                        await client.sendMessage(action.to === 'CUSTOMER' ? message.from : action.to, media, {
+                                            caption: action.caption || ''
+                                        });
+                                        log('success', `File sent from URL: ${action.path}`);
+                                    }
+                                    else {
+                                        log('warning', `File not found: ${action.path}`);
+                                    }
+                                } catch (fileErr) {
+                                    log('error', `Failed to send file: ${fileErr.message}`);
+                                }
                             }
                             break;
 

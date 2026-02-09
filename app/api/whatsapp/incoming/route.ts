@@ -14,13 +14,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import dns from 'node:dns';
 import axios from 'axios';
-
-// FORCE IPv4 to fix "Error fetching" / Timeout issues with Gemini/OpenAI
-dns.setDefaultResultOrder('ipv4first');
-
-export const dynamic = 'force-dynamic'; // Prevent static generation during build
-
 import OpenAI from 'openai';
+import fs from 'fs';
 import dbConnect from '@/lib/db';
 import {
     getConversation,
@@ -28,21 +23,16 @@ import {
     getHistory,
     isAdmin,
     isAdminCommand,
-    parseAdminCommand,
-    saveSetting,
-    getSetting,
-    getAllSettings,
-    detectFriend,
+    handleAdminCommand,
+    checkRateLimit,
     analyzeMood,
     needsEscalation,
-    createPendingQuote,
-    approveQuote,
-    rejectQuote,
-    getPendingQuotes,
-    confirmOrder,
-    getOrdersByStatus,
+    detectFriend,
     handleComplaint,
     updateOrderStatus,
+    confirmOrder,
+    getSetting,
+    createPendingQuote,
     getBotStats
 } from '@/lib/seranex/agent';
 import {
@@ -67,29 +57,7 @@ const openai = new OpenAI({
 const OWNER_PERSONAL_PHONE = process.env.OWNER_PERSONAL_PHONE || '94772148511';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini'; // 'openai' or 'gemini'
 
-// Rate limiting - simple in-memory tracker
-const requestTimestamps: Map<string, number[]> = new Map();
-const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const MAX_REQUESTS_PER_WINDOW = 10; // Per phone number
-
-/**
- * Check rate limit for a phone number
- */
-function checkRateLimit(phone: string): boolean {
-    const now = Date.now();
-    const timestamps = requestTimestamps.get(phone) || [];
-
-    // Remove old timestamps
-    const recentTimestamps = timestamps.filter(t => now - t < RATE_LIMIT_WINDOW);
-
-    if (recentTimestamps.length >= MAX_REQUESTS_PER_WINDOW) {
-        return false; // Rate limited
-    }
-
-    recentTimestamps.push(now);
-    requestTimestamps.set(phone, recentTimestamps);
-    return true;
-}
+// Rate limiting moved to agent.ts
 
 // ===============================================
 // MAIN POST HANDLER
@@ -287,7 +255,7 @@ export async function POST(req: NextRequest) {
         // Generate AI response
         let reply = '';
         let usedModel = '';
-        let aiActions: Record<string, unknown>[] = [];
+        let aiActions: any[] = [];
 
         // 2. Call AI (OpenAI -> Gemini -> Fallback)
         try {
@@ -352,6 +320,31 @@ export async function POST(req: NextRequest) {
             await handleComplaint(phone, `Customer needs human assistance. Last message: ${message}`);
         }
 
+        // Check for [ORDER: JSON] trigger
+        if (reply.includes('[ORDER:')) {
+            try {
+                const match = reply.match(/\[ORDER:\s*({[\s\S]*?})\s*\]/);
+                if (match && match[1]) {
+                    const orderData = JSON.parse(match[1]);
+                    const { order, pdfPath } = await confirmOrder(phone, orderData);
+                    reply = reply.replace(/\[ORDER:[\s\S]*?\]/g, '').trim();
+                    console.log(`[Seranex] 📦 Auto-confirmed order for ${phone}`);
+
+                    // If PDF was generated, attach it as an action
+                    if (pdfPath) {
+                        aiActions.push({
+                            type: 'SEND_FILE',
+                            to: 'CUSTOMER',
+                            path: pdfPath,
+                            caption: `✅ Order confirmed! I've attached your quotation/invoice here. (ID: ${order._id})`
+                        });
+                    }
+                }
+            } catch (orderError: any) {
+                console.error('[Seranex] ❌ Failed to parse order tag:', orderError.message);
+            }
+        }
+
         // ===============================================
         // SAVE & RESPOND
         // ===============================================
@@ -381,9 +374,12 @@ export async function POST(req: NextRequest) {
         console.error('[Seranex] ❌ CRITICAL ERROR:', error);
 
         // Log to file
-        const fs = require('fs');
         const errorLog = `\n[${new Date().toISOString()}] ${error instanceof Error ? error.stack : error}\n`;
-        fs.appendFileSync('error.log', errorLog);
+        try {
+            fs.appendFileSync('error.log', errorLog);
+        } catch (e) {
+            console.error('Failed to write to error.log:', e);
+        }
 
         // Send to Discord
         if (error instanceof Error) {
@@ -407,212 +403,7 @@ export async function POST(req: NextRequest) {
 // ADMIN COMMAND HANDLER
 // ===============================================
 
-async function handleAdminCommand(phone: string, message: string): Promise<string> {
-    const { command, args } = parseAdminCommand(message);
-
-    switch (command) {
-        case 'status':
-        case 'stats': {
-            const stats = await getBotStats();
-            const system = stats.system || {};
-
-            return `📊 *Seranex Bot Status*
-    
-🟢 Status: Online
-⏰ Business: ${stats.isBusinessHours ? 'Opened' : 'Closed'}
-🖥️ Server: ${system.platform || 'Unknown'}
-💾 RAM: ${system.memory || 'Unknown'}
-⏱️ Uptime: ${system.uptime || 'Unknown'}
-
-📈 *Business Stats:*
-💬 Conversations: ${stats.totalConversations}
-📝 Pending Quotes: ${stats.pendingQuotes}
-📦 Active Orders: ${stats.activeOrders}
-✅ Completed: ${stats.completedOrders}
-
-🕐 Time: ${new Date().toLocaleString('en-LK')}`;
-        }
-
-        case 'orders': {
-            const status = args[0] || undefined;
-            const orders = await getOrdersByStatus(status);
-
-            if (orders.length === 0) {
-                return `📦 No ${status || 'pending'} orders found.`;
-            }
-
-            let response = `📦 *Orders${status ? ` (${status})` : ''}:*\n\n`;
-            orders.slice(0, 10).forEach((order: any, i: number) => {
-                response += `${i + 1}. ${order.customerName || 'Customer'}\n`;
-                response += `   📱 ${order.phone}\n`;
-                response += `   💰 Rs. ${order.quotation?.total?.toLocaleString() || 0}\n`;
-                response += `   📊 ${order.status}\n\n`;
-            });
-
-            return response;
-        }
-
-        case 'quotes':
-        case 'pending': {
-            const quotes = await getPendingQuotes();
-
-            if (quotes.length === 0) {
-                return `📝 No pending quotes!`;
-            }
-
-            let response = `📝 *Pending Quotes:*\n\n`;
-            quotes.forEach((quote: any, i: number) => {
-                response += `${i + 1}. ID: \`${quote._id}\`\n`;
-                response += `   📱 ${quote.phone}\n`;
-                response += `   👤 ${quote.customerName}\n`;
-                response += `   📋 ${JSON.stringify(quote.requirements || {}).substring(0, 100)}\n\n`;
-            });
-
-            response += `\n💡 Use: !sera approve <id> or !sera reject <id>`;
-            return response;
-        }
-
-        case 'approve': {
-            const quoteId = args[0];
-            if (!quoteId) {
-                return `❌ Usage: !sera approve <quote_id>`;
-            }
-
-            try {
-                const quote = await approveQuote(quoteId, phone);
-                if (quote) {
-                    return `✅ Quote ${quoteId} approved!\n\nCustomer ${quote.phone} will be notified.`;
-                }
-                return `❌ Quote not found: ${quoteId}`;
-            } catch (e) {
-                return `❌ Error approving quote: ${e instanceof Error ? e.message : 'Unknown error'}`;
-            }
-        }
-
-        case 'reject': {
-            const quoteId = args[0];
-            const reason = args.slice(1).join(' ') || 'No reason provided';
-
-            if (!quoteId) {
-                return `❌ Usage: !sera reject <quote_id> [reason]`;
-            }
-
-            try {
-                const quote = await rejectQuote(quoteId, phone, reason);
-                if (quote) {
-                    return `❌ Quote ${quoteId} rejected.\nReason: ${reason}`;
-                }
-                return `❌ Quote not found: ${quoteId}`;
-            } catch (e) {
-                return `❌ Error rejecting quote: ${e instanceof Error ? e.message : 'Unknown error'}`;
-            }
-        }
-
-        case 'price': {
-            const priceInstruction = args.join(' ');
-            if (!priceInstruction) {
-                const current = await getSetting('price_guidelines') || 'None set';
-                return `📊 *Current Price Guidelines:*\n\n${current}\n\n💡 Usage: !sera price <item> = Rs. <price>`;
-            }
-
-            const current = await getSetting('price_guidelines') || '';
-            await saveSetting('price_guidelines', current + '\n' + priceInstruction, phone);
-            return `✅ Price guideline added:\n"${priceInstruction}"`;
-        }
-
-        case 'busy': {
-            const state = args[0]?.toLowerCase();
-            if (state === 'on' || state === 'true' || state === 'yes') {
-                await saveSetting('is_busy', true, phone);
-                return `📴 *Busy Mode ACTIVATED*
-I will now tell personal/family contacts that you are in school!`;
-            } else if (state === 'off' || state === 'false' || state === 'no') {
-                await saveSetting('is_busy', false, phone);
-                return `🟢 *Busy Mode DEACTIVATED*
-Back to normal.`;
-            } else {
-                const current = await getSetting('is_busy') || false;
-                return `📴 *Busy Mode is currently: ${current ? 'ON' : 'OFF'}*
-💡 Usage: !sera busy on/off`;
-            }
-        }
-
-        case 'note':
-        case 'instruction': {
-            const instruction = args.join(' ');
-            if (!instruction) {
-                const current = await getSetting('custom_instructions') || 'None set';
-                return `📝 *Current Instructions:*\n\n${current}`;
-            }
-
-            const current = await getSetting('custom_instructions') || '';
-            await saveSetting('custom_instructions', current + '\n' + instruction, phone);
-            return `✅ Instruction saved:\n"${instruction}"`;
-        }
-
-        case 'voice':
-        case 'say': {
-            const text = args.join(' ');
-            if (!text) return `❌ Usage: !sera voice <text to speak>`;
-            // Return a special prefix that the bot.js will catch to send as voice
-            return `[SEND_AS_VOICE]${text}`;
-        }
-
-        case 'settings': {
-            const settings = await getAllSettings();
-            let response = `⚙️ *Bot Settings:*\n\n`;
-
-            for (const [key, value] of Object.entries(settings)) {
-                const displayValue = typeof value === 'string'
-                    ? value.substring(0, 100)
-                    : JSON.stringify(value).substring(0, 100);
-                response += `• ${key}: ${displayValue}\n`;
-            }
-
-            return response || `⚙️ No custom settings configured.`;
-        }
-
-        case 'clear': {
-            const setting = args[0];
-            if (setting === 'instructions') {
-                await saveSetting('custom_instructions', '', phone);
-                return `✅ Custom instructions cleared.`;
-            } else if (setting === 'prices') {
-                await saveSetting('price_guidelines', '', phone);
-                return `✅ Price guidelines cleared.`;
-            }
-            return `❌ Usage: !sera clear <instructions|prices>`;
-        }
-
-        case 'help':
-        default: {
-            return `🤖 *Seranex Admin Commands*
-
-📊 *Status:*
-• !sera status - Bot status & stats
-
-📦 *Orders:*
-• !sera orders - List pending orders
-• !sera orders <status> - Filter by status
-
-📝 *Quotes:*
-• !sera quotes - Pending quotes
-• !sera approve <id> - Approve quote
-• !sera reject <id> [reason] - Reject quote
-
-💰 *Settings:*
-• !sera busy on/off - Handle family calls (Class Mode)
-• !sera price <item>=<price> - Add pricing
-• !sera note <instruction> - Add instruction
-• !sera settings - View all settings
-• !sera clear <instructions|prices> - Clear settings
-
-💡 Examples:
-!sera price sticker 100pc = Rs.2500
-!sera note always greet in Sinhala first`;
-        }
-    }
-}
+// Local admin handler removed - using agent.ts version
 
 // ===============================================
 // HEALTH CHECK
