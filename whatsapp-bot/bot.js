@@ -245,32 +245,38 @@ client.on('qr', async (qr) => {
     console.log('\n');
 
     // EXPLICITLY REQUEST PAIRING CODE
-    // We increase delay to 30 seconds to ensure RegistrationUtils is fully loaded
-    // and injected by the library into the browser context.
+    // Cloud modules (RegistrationUtils) take time to load. 
+    // We wait 45s, then try up to 3 times with 15s between retries.
     setTimeout(async () => {
-        try {
-            if (!client || !OWNER_PHONE) return;
+        let attempts = 3;
+        const requestWithRetry = async () => {
+            try {
+                if (!client || !OWNER_PHONE) return;
 
-            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (30s delay security)...`);
-            const code = await client.requestPairingCode(OWNER_PHONE).catch(e => {
-                return { error: e.message || 'Unknown pairing error' };
-            });
+                log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (Attempt ${4 - attempts}/3)...`);
+                const code = await client.requestPairingCode(OWNER_PHONE);
 
-            if (code && typeof code === 'string') {
-                log('success', `✅ Pairing Code received: ${code}`);
-            } else if (code && code.error) {
-                throw new Error(code.error);
+                if (code) {
+                    log('success', `✅ Pairing Code received: ${code}`);
+                }
+            } catch (err) {
+                attempts--;
+                log('error', `Pairing attempt failed: ${err.message}`);
+
+                if (attempts > 0) {
+                    log('info', `🔄 Retrying in 15 seconds... (${attempts} attempts left)`);
+                    setTimeout(requestWithRetry, 15000);
+                } else {
+                    await logToDiscord('error', 'Pairing Code Request EXHAUSTED', {
+                        error: err.message,
+                        tip: 'Browser modules failed to load in time. Please scan the QR Link above manually.',
+                        phone_attempted: OWNER_PHONE
+                    });
+                }
             }
-        } catch (err) {
-            log('error', `Failed to request pairing code: ${err.message}`);
-
-            await logToDiscord('error', 'Pairing Code Request Failed', {
-                error: err.message,
-                tip: 'Browser modules not loaded. If this fails, scan the QR Link or copy the raw data below.',
-                phone_attempted: OWNER_PHONE
-            });
-        }
-    }, 30000);
+        };
+        requestWithRetry();
+    }, 45000);
 
     await logToDiscord('info', '📱 QR Code Available', {
         message: 'Pairing code has been requested (30s delay). If it fails, use this link or paste raw data into a QR generator.',
