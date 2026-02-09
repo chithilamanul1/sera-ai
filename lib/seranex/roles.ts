@@ -41,9 +41,13 @@ export const TEAM_ROLES = {
 
     ],
     FAMILY: {
-        MOM: '94774139621', // Add Mom's number here (e.g. '947...')
-        DAD: '94775220563'  // Add Dad's number here
-    }
+        MOM: '94774139621',
+        DAD: '94775220563'
+    },
+
+    // Special People
+    SAD_FRIEND: '94705163032', // Special case: Be nice, don't roast
+    BOOSTER: '94768290477',    // Riyon is also the booster (primary contact)
 };
 
 export const CUSTOMER_TYPES = {
@@ -69,6 +73,8 @@ export function getUserRole(phone: string): { type: string, name: string } {
 
     if (cleanPhone === TEAM_ROLES.FAMILY.MOM) return { type: CUSTOMER_TYPES.FAMILY, name: 'Amma' };
     if (cleanPhone === TEAM_ROLES.FAMILY.DAD) return { type: CUSTOMER_TYPES.FAMILY, name: 'Thaththa' };
+
+    if (cleanPhone === TEAM_ROLES.SAD_FRIEND) return { type: CUSTOMER_TYPES.FRIEND, name: 'Sad Friend' };
 
     if (TEAM_ROLES.FRIENDS.includes(cleanPhone)) {
         return { type: CUSTOMER_TYPES.FRIEND, name: 'Friend' };

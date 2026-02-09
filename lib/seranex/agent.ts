@@ -698,10 +698,11 @@ export async function confirmOrder(phone: string, quotation: any): Promise<any> 
         quotation: order.quotation
     });
 
-    // Send WhatsApp to owner
-    await sendWhatsAppToAdmin(OWNER_PERSONAL_PHONE,
-        `🎉 New Order Confirmed!\n\nCustomer: ${phone}\nTotal: Rs. ${quotation.total?.toLocaleString()}\nAdvance: Rs. ${order.quotation.advance?.toLocaleString()}`
-    );
+    // Send WhatsApp to admins
+    const notificationMsg = `🎉 *New Order Confirmed!*\n\nCustomer: ${phone}\nTotal: Rs. ${quotation.total?.toLocaleString()}\nAdvance: Rs. ${order.quotation.advance?.toLocaleString()}\n\nCheck dashboard for details.`;
+
+    await sendWhatsAppToAdmin(OWNER_PERSONAL_PHONE, notificationMsg);
+    await sendWhatsAppToAdmin(TEAM_ROLES.CO_OWNER, notificationMsg);
 
     // Generate PDF Invoice/Quote
     try {

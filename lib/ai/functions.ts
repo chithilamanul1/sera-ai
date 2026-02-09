@@ -110,6 +110,12 @@ export async function logFinance(
                 description: `Commission for ${project}`
             });
             console.log(`[FINANCE] Auto-created liability for Riyon: ${devCommission}`);
+
+            // WhatsApp Notification to Riyon
+            if (getGlobal().sendWhatsAppMessage) {
+                const financeMsg = `💰 *Income Registered!*\n\nProject: ${project}\nIncome: Rs. ${amount.toLocaleString()}\n*Your Share: Rs. ${devCommission.toLocaleString()}*\n\nGreat work! 🚀`;
+                await getGlobal().sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, financeMsg);
+            }
         }
 
         return { success: true, message: `${type} logged: ${amount}`, entryId: entry._id };
@@ -238,7 +244,7 @@ export async function generateDraftQuote(clientName: string, clientPhone: string
     newQuote.pdfPath = pdfPath;
     await newQuote.save();
 
-    const devMessage = `*Review Needed*: New Draft Spec for ${clientName}. PDF generated. reply with price to finalize.`;
+    const devMessage = `📝 *New Draft Specification*\n\nClient: ${clientName}\nProject: ${projectId}\nItems: ${items.join(', ')}\n\n*Review needed. Reply with prices.*`;
     if (getGlobal().sendWhatsAppMessage) {
         await getGlobal().sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, devMessage);
     }

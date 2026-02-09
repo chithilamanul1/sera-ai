@@ -12,9 +12,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import dns from 'node:dns';
-import axios from 'axios';
-import OpenAI from 'openai';
 import fs from 'fs';
 import dbConnect from '@/lib/db';
 import {
@@ -49,13 +46,8 @@ import { updateUserMemory, UserProfile } from '@/lib/seranex/memory';
 import { generateAIResponse } from '@/lib/ai/engine';
 
 // Initialize OpenAI
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY || 'sk-dummy-key-for-build-only'
-});
-
-// Config
-const OWNER_PERSONAL_PHONE = process.env.OWNER_PERSONAL_PHONE || '94772148511';
 const AI_PROVIDER = process.env.AI_PROVIDER || 'gemini'; // 'openai' or 'gemini'
+
 
 // Rate limiting moved to agent.ts
 
@@ -70,7 +62,8 @@ export async function POST(req: NextRequest) {
         await dbConnect();
         const body = await req.json();
 
-        const { phone, message, name, voiceData } = body;
+        const { phone, message, name } = body;
+
 
         if (!phone || !message) {
             return NextResponse.json({ error: 'Missing phone or message' }, { status: 400 });
@@ -174,6 +167,8 @@ export async function POST(req: NextRequest) {
             // Override if Family
             if (userRole.type === CUSTOMER_TYPES.FAMILY) {
                 customerTitle = userRole.name;
+            } else if (userRole.type === CUSTOMER_TYPES.FRIEND) {
+                customerTitle = 'bn'; // Default friend title
             }
         } catch (e) {
             console.error('Title detection error:', e);
@@ -206,8 +201,10 @@ export async function POST(req: NextRequest) {
         // --- INJECT ROLE-SPECIFIC INSTRUCTIONS ---
         const isBusy = await getSetting('is_busy') || false;
 
-        if (userRole.type === CUSTOMER_TYPES.FRIEND) {
-            systemPrompt += `\n\n### 🎭 MODE: BEST FRIEND (RUDE/FUNNY)\n- This user is a close friend. DO NOT be professional.\n- Use slang words like "Ado", "Machang", "Bn".\n- Be slightly rude but funny. Roast them if they ask stupid questions.\n- Speak in Singlish or Sinhala as appropriate.`;
+        if (userRole.name === 'Sad Friend') {
+            systemPrompt += `\n\n### 💖 SPECIAL MODE: SUPPORTIVE FRIEND (+94705163032)\n- This user is a close friend who is often sad or going through a hard time.\n- **DO NOT ROAST HIM.** **DO NOT BE RUDE.**\n- Be an empathetic, supportive listener. Use "Bn" or "Malli" gently.\n- If he shares problems, listen and offer kind words.`;
+        } else if (userRole.type === CUSTOMER_TYPES.FRIEND) {
+            systemPrompt += `\n\n### 🎭 MODE: BEST FRIEND (RUDE/FUNNY)\n- This user is a close friend. DO NOT be professional.\n- Use slang words like "Ado", "Machang", "Bn", "Oi", "Hutto".\n- Be slightly rude but funny. Roast them if they ask stupid questions.\n- Speak in Singlish or Sinhala as appropriate.`;
         } else if (userRole.type === CUSTOMER_TYPES.FAMILY) {
             systemPrompt += `\n\n### 🏠 MODE: FAMILY (${userRole.name.toUpperCase()})\n- This is his ${userRole.name}. BE VERY POLITE AND CREATIVE.`;
             if (isBusy) {
@@ -220,8 +217,18 @@ export async function POST(req: NextRequest) {
         } else if (userRole.type === CUSTOMER_TYPES.STAFF) {
             systemPrompt += `\n\n### 🛠 MODE: STAFF (INTERNAL)\n- This user is a staff member. Be concise, technical, and direct.\n- No sales talk. Just facts and data.`;
         } else {
-            systemPrompt += `\n\n### 💼 MODE: PROFESSIONAL SALES\n- Treat this user as a valued customer.\n- Focus on closing the sale and being helpful.`;
+            // Check if the conversation was owner-initiated (History search)
+            const hasOwnerMessage = history.some(m => m.role === 'assistant');
+            if (hasOwnerMessage && history.length < 10) {
+                systemPrompt += `\n\n### 🤝 MODE: VENDOR / PERSONAL CONTACT (OWNER-INITIATED)\n- It looks like the OWNER initiated this chat. This might be a vendor or a personal contact.\n- DO NOT try to sell them Seranex services unless they ask.\n- Be helpful and professional, or mirror the owner's tone if appropriate.`;
+            } else {
+                systemPrompt += `\n\n### 💼 MODE: PROFESSIONAL SALES\n- Treat this user as a valued customer.\n- Focus on closing the sale and being helpful.`;
+            }
         }
+
+        // Add Routing Cascade Logic
+        systemPrompt += `\n\n### 🚦 PROJECT ROUTING CASCADE\n- If a new lead needs a project handled:\n  1. **Primary Contact**: Riyon (Co-Owner).\n  2. **If Riyon says "Ba" / "Busy"**: Ask the owner if we should route to Senior Staff.\n  3. **Fallback**: Route to Staff WordPress or Staff React.`;
+
 
         if (customInstructions) {
             systemPrompt += `\n\n### ADMIN CUSTOM INSTRUCTIONS\n${customInstructions}`;
@@ -255,7 +262,7 @@ export async function POST(req: NextRequest) {
         // Generate AI response
         let reply = '';
         let usedModel = '';
-        let aiActions: any[] = [];
+        let aiActions: Record<string, any>[] = [];
 
         // 2. Call AI (OpenAI -> Gemini -> Fallback)
         try {
@@ -280,8 +287,9 @@ export async function POST(req: NextRequest) {
                 console.log(`[Seranex] ⚡ Captured ${aiActions.length} God Mode actions.`);
             }
 
-        } catch (aiError: any) {
+        } catch (aiError: any) { // Explicitly keeping any for AI error objects
             console.error(`[Seranex] ❌ AI Error:`, aiError.message);
+
             await sendErrorToDiscord(aiError, 'AI Generation Failed');
 
             // Fallback response
@@ -353,7 +361,7 @@ export async function POST(req: NextRequest) {
         await addMessage(phone, 'assistant', reply);
 
         // 4. Background Memory Update (The Bond)
-        updateUserMemory(phone, message, reply).catch((err: any) => {
+        updateUserMemory(phone, message, reply).catch((err: Error) => {
             console.error('[Memory] Background update failed:', err);
         });
 

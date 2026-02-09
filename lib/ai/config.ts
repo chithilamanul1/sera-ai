@@ -18,8 +18,9 @@ if (!apiKeyGemini) {
 }
 
 const genAI = new GoogleGenerativeAI(apiKeyGemini || 'dummy-key');
-export const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // Updated to 2.5
+export const geminiModel = genAI.getGenerativeModel({ model: "gemini-2.0-flash" }); // Updated to 2.0
 
 // --- Constants ---
 export const MODEL_OPENAI = "gpt-4o"; // High intelligence, multilingual
-export const MODEL_GEMINI = "gemini-2.5-flash";
+export const MODEL_GEMINI = "gemini-2.0-flash";
+

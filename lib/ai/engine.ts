@@ -1,4 +1,4 @@
-import { MODEL_GEMINI } from './config';
+import { MODEL_GEMINI, openai, MODEL_OPENAI } from './config';
 import { SYSTEM_PROMPT } from './prompts';
 import {
     routeTask,
@@ -72,16 +72,18 @@ export async function generateAIResponse(
     let finalModel = MODEL_GEMINI;
     const actions: Record<string, unknown>[] = [];
 
+    // --- LANGUAGE DETECTION ---
+    const langStyle = detectLanguageStyle(userMessage);
+    console.log(`[AI] Detected Style: ${langStyle}`);
+
+    // Choose Prompt & Inject Style Hint
+    const styleHint = `\n\n**IMPORTANT STYLE HINT:** The detected language mode for this response is **${langStyle}**. STRICTLY follow the mirroring rules for this mode defined in the system prompt.`;
+    const promptToUse = (systemPromptOverride || SYSTEM_PROMPT) + styleHint;
+
     try {
         console.log(`[AI] Using ${MODEL_GEMINI}...`);
 
-        // --- LANGUAGE DETECTION ---
-        const langStyle = detectLanguageStyle(userMessage);
-        console.log(`[AI] Detected Style: ${langStyle}`);
 
-        // Choose Prompt & Inject Style Hint
-        const styleHint = `\n\n**IMPORTANT STYLE HINT:** The detected language mode for this response is **${langStyle}**. STRICTLY follow the mirroring rules for this mode defined in the system prompt.`;
-        const promptToUse = (systemPromptOverride || SYSTEM_PROMPT) + styleHint;
 
         // --- GEMINI CALL (With Key Rotation & Robust Logic) ---
         const geminiRes = await callGeminiRobust(userMessage, history, promptToUse);
@@ -222,9 +224,58 @@ export async function generateAIResponse(
         }
 
     } catch (error: unknown) {
-        console.error(`[AI] Error:`, error);
-        finalResponseText = "Sorry, technical error.";
-        finalModel = 'error';
+        console.error(`[AI] Gemini exhausted or failed, attempting OpenAI fallback...`, error);
+
+        try {
+            console.log(`[AI] Falling back to OpenAI (${MODEL_OPENAI})...`);
+
+            // Map roles correctly for OpenAI
+            const openAIHistory = history.map(m => {
+                let role: 'user' | 'assistant' | 'system' = 'user';
+                if (m.role === 'assistant' || m.role === 'model') role = 'assistant';
+                else if (m.role === 'system') role = 'system';
+                return { role, content: m.content };
+            });
+
+            const openaiResponse = await openai.chat.completions.create({
+                model: MODEL_OPENAI,
+                messages: [
+                    { role: 'system', content: promptToUse },
+                    ...openAIHistory,
+                    { role: 'user', content: userMessage }
+                ],
+                temperature: 0.7,
+                max_tokens: 1000
+            });
+
+            const rawText = openaiResponse.choices[0].message.content || "";
+            finalModel = MODEL_OPENAI;
+
+            // Simple logic for OpenAI - if it returns JSON, process it
+            const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/) || rawText.match(/{[\s\S]*}/);
+            if (jsonMatch) {
+                try {
+                    const jsonStr = jsonMatch[1] || jsonMatch[0];
+                    const data = JSON.parse(jsonStr);
+                    finalResponseText = rawText.replace(jsonMatch[0], "").trim();
+                    // Basic action support for fallback
+                    if (data.action === 'REPLY_USER' && data.text) finalResponseText = data.text;
+                } catch (jsonErr) {
+                    console.warn("[AI] Fallback JSON parse failed", jsonErr);
+                    finalResponseText = rawText;
+                }
+            } else {
+                finalResponseText = rawText;
+            }
+
+            console.log(`[AI] OpenAI fallback SUCCESS!`);
+
+        } catch (openaiError: unknown) {
+            const err = openaiError as Error;
+            console.error(`[AI] OpenAI also failed:`, err.message);
+            finalResponseText = "Sorry, technical error.";
+            finalModel = 'error';
+        }
     }
 
     // Log Assistant Message
@@ -263,6 +314,10 @@ async function callGeminiRobust(
     let lastRole = '';
     for (const msg of hist) {
         const role = msg.role === 'assistant' || msg.role === 'model' ? 'model' : 'user';
+
+        // Gemini MUST start with 'user'
+        if (payload.contents.length === 0 && role === 'model') continue;
+
         if (role !== lastRole) {
             payload.contents.push({
                 role: role,
@@ -271,6 +326,7 @@ async function callGeminiRobust(
             lastRole = role;
         }
     }
+
 
     // Add current message (MUST be user)
     if (lastRole === 'user') {
@@ -287,7 +343,6 @@ async function callGeminiRobust(
     const models = [
         'gemini-2.0-flash',
         'gemini-2.0-flash-lite',
-        'gemini-2.5-flash',
         'gemini-1.5-pro',
         'gemini-1.5-flash'
     ];
@@ -299,6 +354,7 @@ async function callGeminiRobust(
         const modelName = models[currentModelIndex % models.length];
         const currentKey = keyRotator.getCurrentKey();
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+
 
         try {
             console.log(`[GeminiEngine] 🚀 Attempting ${modelName} with Key #${keyRotator.getCurrentIndex()}...`);

@@ -15,15 +15,11 @@
 
 import 'dotenv/config';
 import pkg from 'whatsapp-web.js';
-const { Client, LocalAuth, RemoteAuth, MessageMedia, Location } = pkg;
-// Removed unused qrcode-terminal import { Client, LocalAuth, MessageMedia, Location } from 'whatsapp-web.js';
-import qrcode from 'qrcode-terminal';
+const { Client, LocalAuth, MessageMedia, Location } = pkg;
 import axios from 'axios';
 import fs from 'fs';
-import path from 'path';
 import express from 'express';
 import mongoose from 'mongoose';
-import { MongoStore } from 'wwebjs-mongo';
 import cron from 'node-cron';
 
 // --- DATABASE MODELS ---
@@ -35,6 +31,8 @@ const MutedContactSchema = new mongoose.Schema({
 });
 const MutedContact = mongoose.models.MutedContact || mongoose.model('MutedContact', MutedContactSchema);
 
+
+
 // ===============================================
 // CONFIGURATION
 // ===============================================
@@ -42,7 +40,7 @@ const MutedContact = mongoose.models.MutedContact || mongoose.model('MutedContac
 // FORCED LOCALHOST for GCP VM stability
 const SERANEX_API = 'http://127.0.0.1:3000/api/whatsapp/incoming';
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
-const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
+const DISCORD_CONSOLE_WEBHOOK = (process.env.DISCORD_CONSOLE_WEBHOOK || '').trim();
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- EXAME MODE CONFIG ---
@@ -95,7 +93,7 @@ function log(level, message, data = null) {
 }
 
 async function logToDiscord(level, message, details = null) {
-    if (!DISCORD_CONSOLE_WEBHOOK) return;
+    if (!DISCORD_CONSOLE_WEBHOOK || !DISCORD_CONSOLE_WEBHOOK.startsWith('http')) return;
 
     try {
         // If it's a QR code, send it as plain text content for image preview
@@ -155,7 +153,7 @@ async function startBot() {
             await mongoose.connect(MONGODB_URI);
             log('success', 'Connected to MongoDB!');
 
-            const store = new MongoStore({ mongoose: mongoose });
+            // store removed as it was unused with LocalAuth
 
             client = new Client({
                 authStrategy: new LocalAuth({
@@ -406,10 +404,22 @@ function initializeHandlers() {
                 return;
             }
 
-            // Skip messages from self
+            // Track messages from self for context, but don't reply
             if (message.fromMe) {
                 if (CONFIG.LOG_MESSAGES) {
-                    console.log(`[DEBUG] Skipped message from self (fromMe: true)`);
+                    console.log(`[DEBUG] Logging message from self (fromMe: true)`);
+                }
+
+                const myPhone = message.to.replace('@c.us', '');
+                // Send to API to log the message without triggering a reply
+                try {
+                    await axios.post(SERANEX_API.replace('/incoming', '/log-message'), {
+                        phone: myPhone,
+                        message: message.body,
+                        role: 'assistant'
+                    });
+                } catch (e) {
+                    console.error('Failed to log own message:', e.message);
                 }
                 return;
             }
