@@ -157,6 +157,8 @@ const commands = {
                 { name: '`!sera stop <id>`', value: '🛑 Stop a PM2 process', inline: false },
                 { name: '`!sera start <id>`', value: '🚀 Start a stopped process', inline: false },
                 { name: '`!sera restart <id>`', value: '🔄 Restart a PM2 process', inline: false },
+                { name: '`!sera mute <phone>`', value: '📴 Mute AI for a customer', inline: false },
+                { name: '`!sera unmute <phone>`', value: '🔊 Unmute AI for a customer', inline: false },
                 { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
                 { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false }
             )
@@ -341,6 +343,42 @@ const commands = {
                 message.reply(`✅ Successfully requested restart for process: **${appId}**`);
             });
         });
+    },
+
+    async mute(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+        const phone = args[0];
+        if (!phone) return message.reply('❌ Specify phone number (e.g. `!sera mute 9477...`)');
+
+        try {
+            const res = await axios.post(`${API_URL}/api/whatsapp/mute`, { phone, action: 'mute' });
+            if (res.data.success) {
+                await message.reply(`📴 AI has been **MUTED** for **${phone}**. You can now reply to them manually.`);
+                await logToChannel('warning', 'Customer Muted', { phone, by: message.author.tag });
+            } else {
+                await message.reply(`❌ Failed: ${res.data.error}`);
+            }
+        } catch (err) {
+            await message.reply(`❌ API Error: ${err.message}`);
+        }
+    },
+
+    async unmute(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+        const phone = args[0];
+        if (!phone) return message.reply('❌ Specify phone number.');
+
+        try {
+            const res = await axios.post(`${API_URL}/api/whatsapp/mute`, { phone, action: 'unmute' });
+            if (res.data.success) {
+                await message.reply(`🔊 AI has been **UNMUTED** for **${phone}**. Sera is back in control!`);
+                await logToChannel('success', 'Customer Unmuted', { phone, by: message.author.tag });
+            } else {
+                await message.reply(`❌ Failed: ${res.data.error}`);
+            }
+        } catch (err) {
+            await message.reply(`❌ API Error: ${err.message}`);
+        }
     }
 };
 

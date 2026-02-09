@@ -138,8 +138,24 @@ const PendingQuoteSchema = new Schema<IPendingQuote>({
     createdAt: { type: Date, default: Date.now }
 });
 
+// Muted Contacts (Human Handoff)
+export interface IMutedContact extends Document {
+    phone: string;
+    reason?: string;
+    mutedAt: Date;
+    expiresAt?: Date;
+}
+
+const MutedContactSchema = new Schema<IMutedContact>({
+    phone: { type: String, required: true, unique: true, index: true },
+    reason: { type: String, default: 'Human Handoff' },
+    mutedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date } // Null means permanent
+});
+
 // Export models
 export const BotSettings: Model<IBotSettings> = mongoose.models.BotSettings || mongoose.model<IBotSettings>('BotSettings', BotSettingsSchema);
 export const Conversation: Model<IConversation> = mongoose.models.Conversation || mongoose.model<IConversation>('Conversation', ConversationSchema);
 export const Order: Model<IOrder> = mongoose.models.Order || mongoose.model<IOrder>('Order', OrderSchema);
 export const PendingQuote: Model<IPendingQuote> = mongoose.models.PendingQuote || mongoose.model<IPendingQuote>('PendingQuote', PendingQuoteSchema);
+export const MutedContact: Model<IMutedContact> = mongoose.models.MutedContact || mongoose.model<IMutedContact>('MutedContact', MutedContactSchema);

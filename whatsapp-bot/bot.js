@@ -23,6 +23,15 @@ import moment from 'moment';
 import mongoose from 'mongoose';
 import { MongoStore } from 'wwebjs-mongo';
 
+// --- DATABASE MODELS ---
+const MutedContactSchema = new mongoose.Schema({
+    phone: { type: String, required: true, unique: true },
+    reason: { type: String, default: 'Human Handoff' },
+    mutedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date }
+});
+const MutedContact = mongoose.models.MutedContact || mongoose.model('MutedContact', MutedContactSchema);
+
 // ===============================================
 // CONFIGURATION
 // ===============================================
@@ -395,6 +404,23 @@ function initializeHandlers() {
                     IS_BOT_PAUSED = false;
                     await message.reply('▶️ Bot resumed! I am back online.');
                     log('success', `Bot resumed by admin ${phoneNumber}`);
+                    return;
+                }
+            }
+
+            // ===============================================
+            // HUMAN HANDOFF (Muted Contacts)
+            // ===============================================
+            const isMuted = await MutedContact.findOne({ phone: phoneNumber });
+            if (isMuted) {
+                // If expiresAt is set, check if it's expired
+                if (isMuted.expiresAt && new Date() > isMuted.expiresAt) {
+                    await MutedContact.deleteOne({ phone: phoneNumber });
+                    log('info', `🔊 AI Auto-unmuted for ${phoneNumber} (Session Expired)`);
+                } else {
+                    if (CONFIG.LOG_MESSAGES) {
+                        console.log(`[DEBUG] AI is muted for ${phoneNumber}. Skipping response.`);
+                    }
                     return;
                 }
             }
