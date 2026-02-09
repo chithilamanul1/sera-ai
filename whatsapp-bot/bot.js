@@ -85,6 +85,14 @@ async function logToDiscord(level, message, details = null) {
     if (!DISCORD_CONSOLE_WEBHOOK) return;
 
     try {
+        // If it's a QR code, send it as plain text content for image preview
+        if (details && details.qr_link) {
+            await axios.post(DISCORD_CONSOLE_WEBHOOK, {
+                content: `🔐 **WhatsApp Login QR (Attempt ${details.count || 1})**\n${details.qr_link}`
+            });
+            return;
+        }
+
         const colors = {
             info: 0x3498DB,
             success: 0x2ECC71,
