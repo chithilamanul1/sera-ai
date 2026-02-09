@@ -241,22 +241,33 @@ client.on('qr', async (qr) => {
     console.log('\n');
 
     // EXPLICITLY REQUEST PAIRING CODE
-    // We add a small delay to ensure the browser script is fully loaded
+    // We increase delay to 20 seconds to ensure 'window.onCodeReceivedEvent' is defined
+    // and RegistrationUtils is loaded by the browser (crucial for cloud containers).
     setTimeout(async () => {
         try {
-            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE}...`);
-            const code = await client.requestPairingCode(OWNER_PHONE);
-            log('success', `✅ Pairing Code received: ${code}`);
+            if (!client || !OWNER_PHONE) return;
+
+            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (20s delay attempt)...`);
+            const code = await client.requestPairingCode(OWNER_PHONE).catch(e => {
+                return { error: e.message || 'Unknown pairing error' };
+            });
+
+            if (code && typeof code === 'string') {
+                log('success', `✅ Pairing Code received: ${code}`);
+            } else if (code && code.error) {
+                throw new Error(code.error);
+            }
         } catch (err) {
             log('error', `Failed to request pairing code: ${err.message}`);
-            // If it fails with "window.onCodeReceivedEvent is not a function", it's a known bug.
-            // We still have the QR link as fallback in Discord logs.
+
+            // Fallback instruction
             await logToDiscord('error', 'Pairing Code Request Failed', {
                 error: err.message,
-                tip: 'Please use the QR code link above if pairing fails.'
+                tip: 'Railway is being slow. If this fails, the QR Link above is your best bet!',
+                phone_attempted: OWNER_PHONE
             });
         }
-    }, 5000);
+    }, 20000);
 
     await logToDiscord('info', '📱 QR Code Available', {
         message: 'Pairing code has been requested. If it fails, use this QR as fallback.',
