@@ -39,7 +39,8 @@ const MutedContact = mongoose.models.MutedContact || mongoose.model('MutedContac
 // CONFIGURATION
 // ===============================================
 
-const SERANEX_API = process.env.SERANEX_API || 'http://localhost:3000/api/whatsapp/incoming';
+// FORCED LOCALHOST for GCP VM stability
+const SERANEX_API = 'http://127.0.0.1:3000/api/whatsapp/incoming';
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -157,10 +158,9 @@ async function startBot() {
             const store = new MongoStore({ mongoose: mongoose });
 
             client = new Client({
-                authStrategy: new RemoteAuth({
-                    clientId: clientId, // CRITICAL: Explicit ID for persistence
-                    store: store,
-                    backupSyncIntervalMs: 60000 // Sync every minute
+                authStrategy: new LocalAuth({
+                    clientId: clientId,
+                    dataPath: './session'
                 }),
                 puppeteer: {
                     headless: true,
@@ -186,10 +186,10 @@ async function startBot() {
             });
 
             client.on('remote_session_saved', () => {
-                log('success', '💾 Remote session successfully saved to MongoDB!');
+                log('success', '💾 Remote session successfully saved (LocalAuth fallback)!');
             });
         } else {
-            log('warning', 'MONGODB_URI missing, sessions will not persist after restart.');
+            // Standard LocalAuth if no Mongo URI (Same logic now)
             client = new Client({
                 authStrategy: new LocalAuth({
                     clientId: clientId,
