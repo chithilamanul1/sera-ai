@@ -231,8 +231,9 @@ export async function generateDraftQuote(clientName: string, clientPhone: string
     const pdfPath = await generateQuotePDF({
         id: projectId,
         clientName,
-        items
-    }, false);
+        items: items.map(item => ({ name: item, price: 0 })),
+        total: 0
+    }, 'QUOTATION');
 
     newQuote.pdfPath = pdfPath;
     await newQuote.save();
@@ -264,9 +265,10 @@ export async function finalizeQuote(projectId: string, price: number) {
     const pdfPath = await generateQuotePDF({
         id: quote.projectId,
         clientName: quote.clientName,
-        items: quote.items,
-        estimatedPrice: price
-    }, true);
+        clientPhone: quote.clientPhone,
+        items: quote.items.map((item: string) => ({ name: item, price: 0 })),
+        total: price
+    }, 'QUOTATION');
 
     quote.pdfPath = pdfPath;
     await quote.save();
@@ -295,9 +297,10 @@ export async function signQuote(projectId: string) {
     const pdfPath = await generateQuotePDF({
         id: quote.projectId,
         clientName: quote.clientName,
-        items: quote.items,
-        estimatedPrice: quote.estimatedPrice
-    }, true);
+        clientPhone: quote.clientPhone,
+        items: quote.items.map((item: string) => ({ name: item, price: 0 })),
+        total: quote.estimatedPrice
+    }, 'QUOTATION');
 
     quote.pdfPath = pdfPath;
     await quote.save();

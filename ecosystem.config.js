@@ -18,7 +18,8 @@ module.exports = {
             cwd: './whatsapp-bot',
             env: {
                 ...process.env,
-                NODE_ENV: 'production'
+                NODE_ENV: 'production',
+                SERANEX_API: 'http://localhost:3000/api/whatsapp/incoming'
             },
             restart_delay: 5000,
             max_restarts: 10
