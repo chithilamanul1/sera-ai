@@ -153,7 +153,9 @@ if (MONGODB_URI) {
                 '--no-first-run',
                 '--no-zygote',
                 '--single-process',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
             ]
         },
         authTimeoutMs: 60000, // Wait 60s for auth
@@ -181,7 +183,9 @@ if (MONGODB_URI) {
                 '--no-first-run',
                 '--no-zygote',
                 '--single-process',
-                '--disable-extensions'
+                '--disable-extensions',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process'
             ]
         },
         authTimeoutMs: 60000,
@@ -241,13 +245,13 @@ client.on('qr', async (qr) => {
     console.log('\n');
 
     // EXPLICITLY REQUEST PAIRING CODE
-    // We increase delay to 20 seconds to ensure 'window.onCodeReceivedEvent' is defined
-    // and RegistrationUtils is loaded by the browser (crucial for cloud containers).
+    // We increase delay to 30 seconds to ensure RegistrationUtils is fully loaded
+    // and injected by the library into the browser context.
     setTimeout(async () => {
         try {
             if (!client || !OWNER_PHONE) return;
 
-            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (20s delay attempt)...`);
+            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE} (30s delay security)...`);
             const code = await client.requestPairingCode(OWNER_PHONE).catch(e => {
                 return { error: e.message || 'Unknown pairing error' };
             });
@@ -260,18 +264,18 @@ client.on('qr', async (qr) => {
         } catch (err) {
             log('error', `Failed to request pairing code: ${err.message}`);
 
-            // Fallback instruction
             await logToDiscord('error', 'Pairing Code Request Failed', {
                 error: err.message,
-                tip: 'Railway is being slow. If this fails, the QR Link above is your best bet!',
+                tip: 'Browser modules not loaded. If this fails, scan the QR Link or copy the raw data below.',
                 phone_attempted: OWNER_PHONE
             });
         }
-    }, 20000);
+    }, 30000);
 
     await logToDiscord('info', '📱 QR Code Available', {
-        message: 'Pairing code has been requested. If it fails, use this QR as fallback.',
-        qr_link: qrImageUrl
+        message: 'Pairing code has been requested (30s delay). If it fails, use this link or paste raw data into a QR generator.',
+        qr_link: qrImageUrl,
+        raw_qr_data: qr // Full raw string for manual use
     });
 });
 
