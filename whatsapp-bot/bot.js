@@ -231,7 +231,7 @@ client.on('code', async (code) => {
 // QR Code fallback (if pairing code fails)
 client.on('qr', async (qr) => {
     console.log('\n');
-    log('info', '📱 QR Code generated (use pairing code instead for better reliability)');
+    log('info', '📱 QR Code generated. Requesting Pairing Code for better reliability...');
     console.log('');
     qrcode.generate(qr, { small: false });
     console.log('');
@@ -240,8 +240,19 @@ client.on('qr', async (qr) => {
     console.log('🔗 QR Link:', qrImageUrl);
     console.log('\n');
 
+    // EXPLICITLY REQUEST PAIRING CODE
+    try {
+        log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE}...`);
+        const code = await client.requestPairingCode(OWNER_PHONE);
+        log('success', `✅ Pairing Code received: ${code}`);
+        // The 'code' event will handle sending it to Discord
+    } catch (err) {
+        log('error', `Failed to request pairing code: ${err.message}`);
+        await logToDiscord('error', 'Pairing Code Request Failed', { error: err.message });
+    }
+
     await logToDiscord('info', '📱 QR Code Available', {
-        message: 'Pairing code is recommended, but QR is available as fallback',
+        message: 'Pairing code has been requested. If it fails, use this QR as fallback.',
         qr_link: qrImageUrl
     });
 });
