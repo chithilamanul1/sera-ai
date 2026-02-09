@@ -21,7 +21,7 @@ import fs from 'fs';
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
 const COMMAND_PREFIX = '!sera';
-const API_URL = process.env.SERANEX_API || 'http://localhost:3000';
+const API_URL = process.env.SERANEX_API_BASE || 'http://localhost:3000';
 
 // Allowed admin user IDs
 const ADMIN_IDS = (process.env.DISCORD_ADMIN_IDS || '').split(',');
@@ -118,10 +118,19 @@ const commands = {
 
         // Check API health
         let apiHealth = '❓ Unknown';
+        let keyStats = { active: 0, backup: 0 };
+
         try {
             const res = await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
-            apiHealth = res.status === 200 ? '✅ Online' : '⚠️ Degraded';
-            stats.apiStatus = 'online';
+            if (res.status === 200) {
+                apiHealth = '✅ Online';
+                stats.apiStatus = 'online';
+                if (res.data?.geminiKeys) {
+                    keyStats = res.data.geminiKeys;
+                }
+            } else {
+                apiHealth = '⚠️ Degraded';
+            }
         } catch (_err) {
             apiHealth = '❌ Offline';
             stats.apiStatus = 'offline';
@@ -138,7 +147,8 @@ const commands = {
                 { name: '⏱️ Uptime', value: `${hours}h ${minutes}m`, inline: true },
                 { name: '📨 Messages Today', value: `${stats.messagesHandled}`, inline: true },
                 { name: '❌ Errors Today', value: `${stats.errorsToday}`, inline: true },
-                { name: '🔑 Gemini Keys (DB)', value: `${Object.keys(res.data?.geminiKeys || {}).length} active`, inline: true }
+                { name: '🔑 Primary Keys', value: `${keyStats.active}`, inline: true },
+                { name: '🗄️ Backup Keys', value: `${keyStats.backup}`, inline: true }
             )
             .setFooter({ text: 'Seranex Lanka AI System' })
             .setTimestamp();

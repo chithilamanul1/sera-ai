@@ -19,7 +19,7 @@ module.exports = {
             env: {
                 ...process.env,
                 NODE_ENV: 'production',
-                SERANEX_API: 'http://localhost:3000/api/whatsapp/incoming'
+                SERANEX_API_BASE: 'http://127.0.0.1:3000'
             },
             restart_delay: 5000,
             max_restarts: 10
@@ -31,7 +31,8 @@ module.exports = {
             cwd: './discord-bot',
             env: {
                 ...process.env,
-                NODE_ENV: 'production'
+                NODE_ENV: 'production',
+                SERANEX_API_BASE: 'http://127.0.0.1:3000'
             },
             restart_delay: 5000,
             max_restarts: 5

@@ -37,8 +37,8 @@ const MutedContact = mongoose.models.MutedContact || mongoose.model('MutedContac
 // CONFIGURATION
 // ===============================================
 
-// FORCED LOCALHOST for GCP VM stability
-const SERANEX_API = 'http://127.0.0.1:3000/api/whatsapp/incoming';
+const API_BASE = process.env.SERANEX_API_BASE || 'http://127.0.0.1:3000';
+const SERANEX_API = `${API_BASE}/api/whatsapp/incoming`;
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = (process.env.DISCORD_CONSOLE_WEBHOOK || '').trim();
 const MONGODB_URI = process.env.MONGODB_URI;

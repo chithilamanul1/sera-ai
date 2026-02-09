@@ -340,8 +340,8 @@ async function callGeminiRobust(
     const models = [
         'gemini-2.0-flash',
         'gemini-2.0-flash-lite',
-        'gemini-1.5-pro',
-        'gemini-1.5-flash'
+        'gemini-1.5-pro-latest',
+        'gemini-1.5-flash-latest'
     ];
 
     // --- TIER 1: FAST LANE (Master Key / Paid) ---
@@ -360,9 +360,11 @@ async function callGeminiRobust(
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return { text: response.data.candidates[0].content.parts[0].text, model: modelName };
                 }
-            } catch (err: any) {
-                console.log(`[GeminiEngine] ⚠️ Fast Lane (${modelName}) failed/throttled.`);
-                if (err.response?.status === 429) {
+            } catch (err: unknown) {
+                const axiosError = err as Record<string, unknown>;
+                console.log(` [Seranex] 🎙️ Fast Lane Voice (${modelName}) Fail.`);
+                const response = axiosError?.response as Record<string, unknown>;
+                if (response?.status === 429) {
                     await notifyGeminiRateLimit(modelName, masterKey.substring(masterKey.length - 4), 0);
                 }
             }
@@ -391,11 +393,21 @@ async function callGeminiRobust(
             if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                 return { text: response.data.candidates[0].content.parts[0].text, model: modelName };
             }
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.error?.message || err.message;
-            console.log(`[GeminiEngine] ⚠️ Fail (${modelName}): ${errorMsg.substring(0, 60)}...`);
+        } catch (err: unknown) {
+            const axiosError = err as Record<string, unknown>;
+            const response = axiosError?.response as Record<string, unknown>;
+            const errorData = response?.data as Record<string, unknown>;
+            const errorInner = errorData?.error as Record<string, unknown>;
+            const errorMsg = (errorInner?.message as string) || (axiosError.message as string) || 'Unknown error';
+            const errorStatus = (response?.status as number) || 'UNKNOWN';
 
-            if (err.response?.status === 429) {
+            console.log(` [Seranex] 🎙️ Fail (${modelName}): Status ${errorStatus} - ${errorMsg.substring(0, 100)}`);
+
+            if (errorInner) {
+                console.log(` [Seranex] 🛑 Full error:`, JSON.stringify(errorInner).substring(0, 200));
+            }
+
+            if (response?.status === 429) {
                 await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
             }
 
@@ -419,7 +431,7 @@ async function callGeminiRobust(
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return { text: response.data.candidates[0].content.parts[0].text, model: `${modelName}-backup` };
                 }
-            } catch (_err) {
+            } catch {
                 // Silently continue through backup pool
             }
         }

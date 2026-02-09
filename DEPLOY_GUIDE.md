@@ -72,24 +72,44 @@ pm2 save
 - `pm2 restart seranex-bot`: Restart only the bot.
 - `pm2 restart seranex-api`: Restart only the API.
 
-## 6. 🚀 How to Update (Pull New Changes)
+## 6. 🚀 How to Update (Force Sync Everything)
 
-Whenever I push new changes to GitHub, run these commands on your VM to update:
+Run these commands in order to ensure the latest changes are correctly built and running:
 
 ```bash
+# Enter the project folder
 cd ~/seraauto
 
 # 1. Pull latest code
 git pull origin main
 
-# 2. Re-install dependencies (in case they changed)
+# 2. Re-install & Re-build
 npm install
-cd whatsapp-bot && npm install
-cd ..
-
-# 3. Re-build the Next.js API
 npm run build
 
-# 4. Restart everything
-pm2 restart all
+# 3. Update Bots
+cd whatsapp-bot && npm install && cd ..
+cd discord-bot && npm install && cd ..
+
+# 4. Restart everything (CRITICAL)
+pm2 restart ecosystem.config.js --update-env
+pm2 save
 ```
+
+## 7. 🛠️ Troubleshooting 502 / 404 Errors
+
+If you see a 502 error on Discord or 404 in the logs:
+
+1. **Check if API is running**: Visit `http://YOUR_VM_IP:3000/api/health` in your browser.
+   - If it says "Online" and shows "version: 1.1.0", you are on the latest code!
+2. **Check API Logs**: Run `pm2 logs seranex-api` to see if there are build or start errors.
+3. **Check Port 3000**: Ensure 3000 is open in GCP Firewall settings.
+4. **Key Rotation Issues**: If you get 404 from Google, check `pm2 logs` for the "🛑 Full error" detail I added. It will tell you if the API is disabled or the key is invalid.
+
+## 8. 🔑 Managing Keys
+
+Instead of using 5 different keys, you can just set one "Perfect Key" in the database:
+
+- Use `!sera key <YOUR_KEY>` in Discord.
+- This will set the Primary Master Key.
+- You can clear old keys using the same command with a new one; it will automatically move the old ones to the backup partition.

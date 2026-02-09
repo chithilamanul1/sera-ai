@@ -39,9 +39,10 @@ async function transcribeWhisper(audioBase64: string): Promise<TranscriptionResu
             language: 'unknown',
             confidence: 1.0
         };
-    } catch (err: any) {
+    } catch (err: unknown) {
         if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-        console.error('[Whisper] ❌ Fallback failed:', err.message);
+        const errorMsg = (err as Error).message || 'Unknown error';
+        console.error('[Whisper] ❌ Fallback failed:', errorMsg);
         throw new Error('Both Gemini and OpenAI Whisper transcription failed.');
     }
 }
@@ -57,7 +58,7 @@ export async function transcribeVoice(
 
     try {
         return await transcribeGeminiFallback(audioBase64, mimeType);
-    } catch (_geminiError) {
+    } catch {
         console.log(` [Seranex] ⚠️ Gemini failed. Falling back to OPENAI WHISPER...`);
         return await transcribeWhisper(audioBase64);
     }
@@ -78,7 +79,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
     const models = [
         'gemini-2.0-flash',
         'gemini-2.0-flash-lite',
-        'gemini-1.5-pro'
+        'gemini-1.5-flash-latest'
     ];
 
     // --- TIER 1: FAST LANE (Master Key) ---
@@ -102,9 +103,11 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
                     const text = response.data.candidates[0].content.parts[0].text.trim();
                     return { text, language: detectLanguage(text), confidence: 1.0 };
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
+                const axiosError = err as Record<string, unknown>;
+                const response = axiosError?.response as Record<string, unknown>;
                 console.log(` [Seranex] 🎙️ Fast Lane Voice (${modelName}) Fail.`);
-                if (err.response?.status === 429) {
+                if (response?.status === 429) {
                     await notifyGeminiRateLimit(modelName, masterKey.substring(masterKey.length - 4), 0);
                 }
             }
@@ -139,11 +142,21 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
                 return { text, language: detectLanguage(text), confidence: 1.0 };
             }
 
-        } catch (err: any) {
-            const errorMsg = err.response?.data?.error?.message || err.message;
-            console.log(` [Seranex] ⚠️ ${modelName} Fail: ${errorMsg.substring(0, 60)}...`);
+        } catch (err: unknown) {
+            const axiosError = err as Record<string, unknown>;
+            const response = axiosError?.response as Record<string, unknown>;
+            const errorData = response?.data as Record<string, unknown>;
+            const errorInner = errorData?.error as Record<string, unknown>;
+            const errorMsg = (errorInner?.message as string) || (axiosError?.message as string) || 'Unknown error';
+            const errorStatus = (response?.status as number) || 'UNKNOWN';
 
-            if (err.response?.status === 429) {
+            console.log(` [Seranex] 🎙️ Fail (${modelName}): Status ${errorStatus} - ${errorMsg.substring(0, 100)}`);
+
+            if (errorInner) {
+                console.log(` [Seranex] 🛑 Full error:`, JSON.stringify(errorInner).substring(0, 200));
+            }
+
+            if (response?.status === 429) {
                 await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
             }
 
@@ -173,16 +186,16 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
                 }, { timeout: 20000, family: 4 });
 
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    const text = response.data.candidates[0].content.parts[0].text.trim();
-                    return { text, language: detectLanguage(text), confidence: 1.0 };
+                    const text = response.data.candidates[0].content.parts[0].text.trim(); // Added .trim()
+                    return { text, language: detectLanguage(text), confidence: 1.0 }; // Changed to return TranscriptionResult
                 }
-            } catch (_err) {
-                // Continue pool
+            } catch { // Changed from catch to catch {}
+                // Silently continue through backup pool
             }
         }
     }
 
-    throw new Error('All Gemini keys (Primary, Backup, and Emergency) exhausted for voice.');
+    throw new Error('All Gemini keys (Primary, Backup, and Emergency) exhausted for voice.'); // Changed error message
 }
 
 /**
