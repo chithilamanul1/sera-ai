@@ -11,6 +11,7 @@
 import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder, Events } from 'discord.js';
 import axios from 'axios';
+import pm2 from 'pm2';
 
 // ===============================================
 // CONFIGURATION
@@ -155,6 +156,8 @@ const commands = {
                 { name: '`!sera ping`', value: 'Check bot latency', inline: false },
                 { name: '`!sera pause`', value: '⚠️ Pause AI responses (Admin)', inline: false },
                 { name: '`!sera resume`', value: '⚠️ Resume AI responses (Admin)', inline: false },
+                { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
+                { name: '`!sera restart <id>`', value: '🔄 Restart a PM2 process', inline: false },
                 { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false }
             )
             .setFooter({ text: 'Use commands in the control channel' })
@@ -224,6 +227,54 @@ const commands = {
 
     async logs(message) {
         await message.reply('📋 Recent logs are automatically posted to this channel. Check the messages above for any errors or warnings.');
+    },
+
+    async pm2(message) {
+        pm2.connect((err) => {
+            if (err) return message.reply(`❌ PM2 Connect Error: ${err.message}`);
+
+            pm2.list((err, list) => {
+                pm2.disconnect();
+                if (err) return message.reply(`❌ PM2 List Error: ${err.message}`);
+
+                const embed = new EmbedBuilder()
+                    .setColor(0x00D4AA)
+                    .setTitle('🚀 PM2 Process Manager')
+                    .setTimestamp();
+
+                list.forEach(app => {
+                    const statusEmoji = app.pm2_env.status === 'online' ? '✅' : '❌';
+                    const memory = Math.round(app.monit.memory / 1024 / 1024);
+                    const cpu = app.monit.cpu;
+                    embed.addFields({
+                        name: `${statusEmoji} ${app.name} [ID: ${app.pm_id}]`,
+                        value: `Status: **${app.pm2_env.status}** | CPU: **${cpu}%** | Mem: **${memory}MB** | Restarts: **${app.pm2_env.restart_time}**`,
+                        inline: false
+                    });
+                });
+
+                message.reply({ embeds: [embed] });
+            });
+        });
+    },
+
+    async restart(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) {
+            return message.reply('❌ You are not authorized to use this command.');
+        }
+
+        const appId = args[0];
+        if (!appId) return message.reply('❌ Please specify a process ID or name (e.g. `!sera restart 0` or `!sera restart seranex-api`)');
+
+        pm2.connect((err) => {
+            if (err) return message.reply(`❌ PM2 Connect Error: ${err.message}`);
+
+            pm2.restart(appId, (err) => {
+                pm2.disconnect();
+                if (err) return message.reply(`❌ PM2 Restart Error: ${err.message}`);
+                message.reply(`✅ Successfully requested restart for process: **${appId}**`);
+            });
+        });
     }
 };
 
