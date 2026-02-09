@@ -34,7 +34,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- EXAME MODE CONFIG ---
 const EXAM_DATE = '2026-05-18'; // O/L Exam Date (Placeholder)
-const OWNER_PHONE = process.env.OWNER_PHONE || '94728382638'; // Replaced hardcoded number
+const OWNER_PHONE = process.env.OWNER_PHONE || ADMIN_PHONES[0]; // Always prefer env, then first admin
 
 // Feature toggles (inspired by KHAN-MD)
 const CONFIG = {
@@ -146,6 +146,7 @@ async function startBot() {
                     headless: true,
                     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
                     protocolTimeout: 300000,
+                    slowMo: 50,
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
@@ -178,6 +179,7 @@ async function startBot() {
                     headless: true,
                     executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
                     protocolTimeout: 300000,
+                    slowMo: 50,
                     args: [
                         '--no-sandbox',
                         '--disable-setuid-sandbox',
