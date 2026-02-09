@@ -1,18 +1,6 @@
-/**
- * Seranex Lanka WhatsApp API
- * Main handler for incoming WhatsApp messages
- * 
- * Features:
- * - AI responses via OpenAI/Gemini
- * - Admin commands (!sera)
- * - Mood analysis & escalation
- * - Friend detection
- * - Quotation workflow
- * - Order management
- */
-
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
+
 import dbConnect from '@/lib/db';
 import {
     getConversation,
@@ -202,7 +190,7 @@ export async function POST(req: NextRequest) {
         const isBusy = await getSetting('is_busy') || false;
 
         if (userRole.name === 'Sad Friend') {
-            systemPrompt += `\n\n### 💖 SPECIAL MODE: SUPPORTIVE FRIEND (+94705163032)\n- This user is a close friend who is often sad or going through a hard time.\n- **DO NOT ROAST HIM.** **DO NOT BE RUDE.**\n- Be an empathetic, supportive listener. Use "Bn" or "Malli" gently.\n- If he shares problems, listen and offer kind words.`;
+            systemPrompt += `\n\n### 💖 SPECIAL MODE: SUPPORTIVE FRIEND (NISAL - +94705163032)\n- This user is Nisal, a close friend who is often sad or going through a hard time.\n- **STRICTLY PROHIBITED**: DO NOT ROAST HIM. DO NOT BE RUDE. DO NOT MOCK HIM.\n- **TITLE RULE**: NEVER call him "sir" even sarcastically. ONLY use "Bn" or "Malli".\n- If he says "o", "hm", or other short messages, do not ask "what is that?". Just acknowledge it gently or stay silent if appropriate.\n- Be an empathetic, supportive listener. Speak with kindness and love.`;
         } else if (userRole.type === CUSTOMER_TYPES.FRIEND) {
             systemPrompt += `\n\n### 🎭 MODE: BEST FRIEND (RUDE/FUNNY)\n- This user is a close friend. DO NOT be professional.\n- Use slang words like "Ado", "Machang", "Bn", "Oi", "Hutto".\n- Be slightly rude but funny. Roast them if they ask stupid questions.\n- Speak in Singlish or Sinhala as appropriate.`;
         } else if (userRole.type === CUSTOMER_TYPES.FAMILY) {
@@ -269,7 +257,7 @@ export async function POST(req: NextRequest) {
             // Use the centralized engine with God Mode features
             const aiResponse = await generateAIResponse(
                 message,
-                history.map(m => ({ role: m.role as any, content: m.content })),
+                history.map(m => ({ role: m.role as 'user' | 'assistant' | 'system' | 'model', content: m.content })),
                 {
                     phone,
                     customerName: name || 'Customer',
@@ -277,6 +265,7 @@ export async function POST(req: NextRequest) {
                 },
                 systemPrompt // Pass the dynamic system prompt we built
             );
+
 
             reply = aiResponse.text;
             usedModel = aiResponse.usedModel;
