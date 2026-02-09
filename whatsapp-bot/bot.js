@@ -190,30 +190,57 @@ if (MONGODB_URI) {
 // EVENT HANDLERS
 // ===============================================
 
-// QR Code for authentication
+// Pairing code for authentication (more reliable than QR)
+client.on('code', async (code) => {
+    console.log('\n');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('📱 WHATSAPP PAIRING CODE');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('');
+    console.log(`   CODE: ${code}`);
+    console.log('');
+    console.log('   1. Open WhatsApp on your phone');
+    console.log('   2. Go to Settings > Linked Devices');
+    console.log('   3. Tap "Link a Device"');
+    console.log('   4. Tap "Link with phone number instead"');
+    console.log(`   5. Enter this code: ${code}`);
+    console.log('');
+    console.log('   ⏰ Code expires in 10 minutes');
+    console.log('═══════════════════════════════════════════════════');
+    console.log('\n');
+
+    log('info', `📱 Pairing Code Generated: ${code}`);
+
+    // Send to Discord
+    await logToDiscord('warning', '🔐 WhatsApp Pairing Code', {
+        code: code,
+        instructions: [
+            '1. Open WhatsApp on your phone',
+            '2. Settings > Linked Devices > Link a Device',
+            '3. Tap "Link with phone number instead"',
+            `4. Enter code: ${code}`,
+            '⏰ Expires in 10 minutes'
+        ].join('\n'),
+        expires_in: '10 minutes'
+    });
+});
+
+// QR Code fallback (if pairing code fails)
 client.on('qr', async (qr) => {
     console.log('\n');
-    log('info', '📱 Scan this QR code with WhatsApp:');
+    log('info', '📱 QR Code generated (use pairing code instead for better reliability)');
     console.log('');
     qrcode.generate(qr, { small: false });
     console.log('');
-    log('info', '(WhatsApp > Settings > Linked Devices > Link a Device)');
+
+    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
+    console.log('🔗 QR Link:', qrImageUrl);
     console.log('\n');
 
-    // Generate QR image URL
-    const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
-
-    // Also notify discord so we know a scan is needed
-    await logToDiscord('warning', '🚨 SCAN NOW! WhatsApp Login Required!', {
-        message: '⚡ A new QR code has been generated. SCAN WITHIN 20 SECONDS!',
-        scan_this_link: qrImageUrl
+    await logToDiscord('info', '📱 QR Code Available', {
+        message: 'Pairing code is recommended, but QR is available as fallback',
+        qr_link: qrImageUrl
     });
-
-    // Also log the direct link to console for easy access
-    console.log('');
-    console.log('🔗 DIRECT QR LINK (Click or copy to browser):');
-    console.log(qrImageUrl);
-    console.log('');
 });
 
 // Authentication successful
