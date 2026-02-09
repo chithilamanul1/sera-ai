@@ -34,7 +34,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 // --- EXAME MODE CONFIG ---
 const EXAM_DATE = '2026-05-18'; // O/L Exam Date (Placeholder)
-const OWNER_PHONE = '94772148511'; // You
+const OWNER_PHONE = process.env.OWNER_PHONE || '94728382638'; // Replaced hardcoded number
 
 // Feature toggles (inspired by KHAN-MD)
 const CONFIG = {
@@ -241,15 +241,22 @@ client.on('qr', async (qr) => {
     console.log('\n');
 
     // EXPLICITLY REQUEST PAIRING CODE
-    try {
-        log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE}...`);
-        const code = await client.requestPairingCode(OWNER_PHONE);
-        log('success', `✅ Pairing Code received: ${code}`);
-        // The 'code' event will handle sending it to Discord
-    } catch (err) {
-        log('error', `Failed to request pairing code: ${err.message}`);
-        await logToDiscord('error', 'Pairing Code Request Failed', { error: err.message });
-    }
+    // We add a small delay to ensure the browser script is fully loaded
+    setTimeout(async () => {
+        try {
+            log('info', `🔐 Requesting Pairing Code for ${OWNER_PHONE}...`);
+            const code = await client.requestPairingCode(OWNER_PHONE);
+            log('success', `✅ Pairing Code received: ${code}`);
+        } catch (err) {
+            log('error', `Failed to request pairing code: ${err.message}`);
+            // If it fails with "window.onCodeReceivedEvent is not a function", it's a known bug.
+            // We still have the QR link as fallback in Discord logs.
+            await logToDiscord('error', 'Pairing Code Request Failed', {
+                error: err.message,
+                tip: 'Please use the QR code link above if pairing fails.'
+            });
+        }
+    }, 5000);
 
     await logToDiscord('info', '📱 QR Code Available', {
         message: 'Pairing code has been requested. If it fails, use this QR as fallback.',
@@ -444,7 +451,7 @@ client.on('message', async (message) => {
                 } else if (chat.sendStateTyping) {
                     await chat.sendStateTyping();
                 }
-            } catch (e) {
+            } catch {
                 log('warning', 'Could not send typing state (Chat might not support it)');
             }
         }
@@ -525,7 +532,7 @@ client.on('message', async (message) => {
             try {
                 const chat = await message.getChat();
                 if (chat.clearState) await chat.clearState();
-            } catch (e) {
+            } catch {
                 // Ignore
             }
         }
