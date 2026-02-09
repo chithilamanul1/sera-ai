@@ -721,7 +721,8 @@ export async function confirmOrder(phone: string, quotation: any): Promise<any> 
 
         return { order, pdfPath };
     } catch (pdfErr) {
-        console.error('[Seranex] ❌ PDF Generation failed:', pdfErr.message);
+        const errorMessage = pdfErr instanceof Error ? pdfErr.message : String(pdfErr);
+        console.error('[Seranex] ❌ PDF Generation failed:', errorMessage);
         return { order, pdfPath: null };
     }
 }
