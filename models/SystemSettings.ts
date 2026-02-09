@@ -4,6 +4,7 @@ export interface ISystemSettings {
     key: string; // usually 'global'
     isAiActive: boolean;
     adminPhoneNumber?: string; // For alerts
+    geminiKeys?: Record<string, string>; // { "index_0": "key", "index_1": "key" }
 }
 
 const SystemSettingsSchema = new Schema<ISystemSettings>(
@@ -11,6 +12,7 @@ const SystemSettingsSchema = new Schema<ISystemSettings>(
         key: { type: String, required: true, unique: true, default: 'global' },
         isAiActive: { type: Boolean, default: true },
         adminPhoneNumber: { type: String },
+        geminiKeys: { type: Schema.Types.Mixed, default: {} },
     },
     { timestamps: true }
 );

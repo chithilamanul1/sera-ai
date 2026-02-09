@@ -1,4 +1,6 @@
 // Transcription Result Interface
+import { notifyGeminiRateLimit } from './notifications';
+
 export interface TranscriptionResult {
     text: string;
     language: 'en' | 'si' | 'unknown';
@@ -68,76 +70,92 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
     const { default: keyRotator } = await import('./gemini-keys');
     const axios = (await import('axios')).default;
 
-    // Clean MIME type for Gemini
     let cleanMimeType = mimeType.split(';')[0].trim();
     if (cleanMimeType === 'audio/ogg' || cleanMimeType.includes('opus')) {
-        cleanMimeType = 'audio/ogg'; // Gemini likes simple types
+        cleanMimeType = 'audio/ogg';
     }
 
-    const models = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-flash-latest', 'gemini-pro-latest'];
-    let currentModelIndex = 0;
-    let totalAttempts = models.length * keyRotator.getKeyCount();
+    const models = [
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-pro'
+    ];
 
-    while (totalAttempts > 0) {
-        const modelName = models[currentModelIndex];
-        const currentKey = keyRotator.getCurrentKey();
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+    // --- TIER 1: FAST LANE (Master Key) ---
+    const masterKey = keyRotator.getMasterKey();
+    if (masterKey) {
+        for (const modelName of models.slice(0, 2)) {
+            try {
+                console.log(` [Seranex] 🎙️ FAST LANE Voice: Attempting ${modelName}...`);
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
+                const response = await axios.post(url, {
+                    contents: [{
+                        role: 'user',
+                        parts: [
+                            { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                            { text: "Transcribe this audio precisely. Sinhala/English/Singlish support. Only return text." }
+                        ]
+                    }]
+                }, { timeout: 15000, family: 4 });
 
-        try {
-            console.log(` [Seranex] 🎙️ Attempting ${modelName} with Key #${keyRotator.getCurrentIndex()}...`);
-
-            const response = await axios.post(url, {
-                contents: [{
-                    role: 'user',
-                    parts: [
-                        {
-                            inlineData: {
-                                data: audioBase64,
-                                mimeType: cleanMimeType
-                            }
-                        },
-                        {
-                            text: "Transcribe this audio precisely. If the language is Sinhala, use Sinhala script. If it is English, use English. If it is Singlish, transcribe the Sinhala words in English characters. Only return the transcription text, nothing else."
-                        }
-                    ]
-                }],
-                generationConfig: {
-                    temperature: 0.1, // Low temp for more accurate transcription
-                    maxOutputTokens: 1000
+                if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    const text = response.data.candidates[0].content.parts[0].text.trim();
+                    return { text, language: detectLanguage(text), confidence: 1.0 };
                 }
-            }, {
-                timeout: 15000, // Voice can be big, give more time
-                family: 4,      // FORCE IPv4 to avoid timeouts
-                headers: { 'Content-Type': 'application/json' }
-            });
-
-            if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-                const text = response.data.candidates[0].content.parts[0].text.trim();
-                const language = detectLanguage(text);
-                return { text, language, confidence: 1.0 };
-            } else {
-                throw new Error('Empty response from Gemini');
-            }
-
-        } catch (error: any) {
-            const errorMsg = error.response?.data?.error?.message || error.message;
-            console.log(` [Seranex] ⚠️ ${modelName} Fail: ${errorMsg.substring(0, 60)}...`);
-
-            totalAttempts--;
-
-            if (totalAttempts > 0) {
-                if (totalAttempts % keyRotator.getKeyCount() === 0) {
-                    currentModelIndex++;
-                } else {
-                    keyRotator.rotate();
-                    // Small delay after rotation
-                    await new Promise(resolve => setTimeout(resolve, 500));
+            } catch (err: any) {
+                console.log(` [Seranex] 🎙️ Fast Lane Voice (${modelName}) Fail.`);
+                if (err.response?.status === 429) {
+                    await notifyGeminiRateLimit(modelName, masterKey.substring(masterKey.length - 4), 0);
                 }
             }
         }
     }
 
-    throw new Error('All Gemini keys and models exhausted.');
+    // --- TIER 2: ROBUST ROTATION ---
+    let currentModelIndex = 0;
+    let totalAttempts = models.length * keyRotator.getKeyCount();
+
+    while (totalAttempts > 0) {
+        const modelName = models[currentModelIndex % models.length];
+        const keyIndex = totalAttempts % keyRotator.getKeyCount();
+        const currentKey = keyRotator.getBackupKey(keyIndex);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+
+        try {
+            console.log(` [Seranex] 🎙️ ROTATION Voice: Attempting ${modelName} with Key #${keyIndex + 1}...`);
+
+            const response = await axios.post(url, {
+                contents: [{
+                    role: 'user',
+                    parts: [
+                        { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                        { text: "Transcribe precisely. Only return text." }
+                    ]
+                }]
+            }, { timeout: 15000, family: 4 });
+
+            if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                const text = response.data.candidates[0].content.parts[0].text.trim();
+                return { text, language: detectLanguage(text), confidence: 1.0 };
+            }
+
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.error?.message || err.message;
+            console.log(` [Seranex] ⚠️ ${modelName} Fail: ${errorMsg.substring(0, 60)}...`);
+
+            if (err.response?.status === 429) {
+                await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
+            }
+
+            totalAttempts--;
+            if (totalAttempts > 0 && totalAttempts % keyRotator.getKeyCount() === 0) {
+                currentModelIndex++;
+            }
+            await new Promise(resolve => setTimeout(resolve, 300));
+        }
+    }
+
+    throw new Error('All Gemini keys and models exhausted for voice.');
 }
 
 /**

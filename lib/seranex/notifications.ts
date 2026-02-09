@@ -173,6 +173,35 @@ export async function sendErrorToDiscord(error: Error | string, context?: string
     });
 }
 
+/**
+ * Notify Discord about Gemini rate limit
+ */
+export async function notifyGeminiRateLimit(modelName: string, keyInfo: string, keyIndex: number): Promise<void> {
+    const embed = {
+        title: `🛑 GEMINI RATE LIMIT HIT`,
+        color: 0xE74C3C, // Red
+        description: `API Key #${keyIndex} (\`${keyInfo}\`) has been throttled (429) for model **${modelName}**.`,
+        fields: [
+            {
+                name: '💡 Action Required',
+                value: 'Please replace this key to restore performance.',
+                inline: false
+            },
+            {
+                name: '⌨️ Discord Command',
+                value: `\`!sera key ${keyIndex} <NEW_GEMINI_KEY>\``,
+                inline: false
+            }
+        ],
+        footer: { text: 'Seranex Lanka Performance Guard' },
+        timestamp: new Date().toISOString()
+    };
+
+    if (DISCORD_CONSOLE_WEBHOOK) {
+        await axios.post(DISCORD_CONSOLE_WEBHOOK, { embeds: [embed] }).catch(() => { });
+    }
+}
+
 // ===============================================
 // WHATSAPP ADMIN NOTIFICATIONS
 // ===============================================

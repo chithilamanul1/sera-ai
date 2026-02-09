@@ -16,6 +16,7 @@ import {
     approveMarketing,
     sendLocation
 } from './functions';
+import { sendErrorToDiscord, notifyGeminiRateLimit } from '../seranex/notifications';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
 import keyRotator from '../seranex/gemini-keys';
@@ -310,12 +311,10 @@ async function callGeminiRobust(
         }
     };
 
-    // Filter and alternate history (Gemini is VERY strict: user, model, user, model...)
+    // Filter and alternate history
     let lastRole = '';
     for (const msg of hist) {
         const role = msg.role === 'assistant' || msg.role === 'model' ? 'model' : 'user';
-
-        // Gemini MUST start with 'user'
         if (payload.contents.length === 0 && role === 'model') continue;
 
         if (role !== lastRole) {
@@ -327,8 +326,6 @@ async function callGeminiRobust(
         }
     }
 
-
-    // Add current message (MUST be user)
     if (lastRole === 'user') {
         if (payload.contents.length > 0) {
             payload.contents[payload.contents.length - 1].parts[0].text += `\n\n${userMsg}`;
@@ -346,47 +343,67 @@ async function callGeminiRobust(
         'gemini-1.5-pro',
         'gemini-1.5-flash'
     ];
+
+    // --- TIER 1: FAST LANE (Master Key / Paid) ---
+    const masterKey = keyRotator.getMasterKey();
+    if (masterKey) {
+        for (const modelName of models.slice(0, 2)) { // Try Flash and Flash-Lite first
+            try {
+                console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
+                const response = await axios.post(url, payload, {
+                    timeout: 10000,
+                    family: 4,
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                    return { text: response.data.candidates[0].content.parts[0].text, model: modelName };
+                }
+            } catch (err: any) {
+                console.log(`[GeminiEngine] ⚠️ Fast Lane (${modelName}) failed/throttled.`);
+                if (err.response?.status === 429) {
+                    await notifyGeminiRateLimit(modelName, masterKey.substring(masterKey.length - 4), 0);
+                }
+            }
+        }
+    }
+
+    // --- TIER 2: ROBUST ROTATION (Backups/Free) ---
     let currentModelIndex = 0;
-    let totalAttempts = models.length * keyRotator.getKeyCount(); // Multiply by key count
+    let totalAttempts = models.length * keyRotator.getKeyCount();
 
     while (totalAttempts > 0) {
-        // Safe access to models array
         const modelName = models[currentModelIndex % models.length];
-        const currentKey = keyRotator.getCurrentKey();
+        const keyIndex = totalAttempts % keyRotator.getKeyCount();
+        const currentKey = keyRotator.getBackupKey(keyIndex);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
 
-
         try {
-            console.log(`[GeminiEngine] 🚀 Attempting ${modelName} with Key #${keyRotator.getCurrentIndex()}...`);
+            console.log(`[GeminiEngine] 🛡️ ROTATION: Attempting ${modelName} with Key #${keyIndex + 1}...`);
 
             const response = await axios.post(url, payload, {
-                timeout: 15000,
-                family: 4, // FORCE IPv4
+                timeout: 12000,
+                family: 4,
                 headers: { 'Content-Type': 'application/json' }
             });
 
-            if (response.data && response.data.candidates && response.data.candidates.length > 0) {
-                const text = response.data.candidates[0].content.parts[0].text;
-                return { text, model: modelName };
-            } else {
-                throw new Error('Empty response from Gemini');
+            if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
+                return { text: response.data.candidates[0].content.parts[0].text, model: modelName };
             }
+        } catch (err: any) {
+            const errorMsg = err.response?.data?.error?.message || err.message;
+            console.log(`[GeminiEngine] ⚠️ Fail (${modelName}): ${errorMsg.substring(0, 60)}...`);
 
-        } catch (error: unknown) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.log(`[GeminiEngine] ⚠️ Fail (${modelName}): ${errorMsg.substring(0, 100)}...`);
+            if (err.response?.status === 429) {
+                await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
+            }
 
             totalAttempts--;
-
-            if (totalAttempts > 0) {
-                // If we've tried all keys for this model, switch model
-                if (totalAttempts % keyRotator.getKeyCount() === 0) {
-                    currentModelIndex++;
-                } else {
-                    keyRotator.rotate();
-                }
-                await new Promise(resolve => setTimeout(resolve, 500));
+            if (totalAttempts > 0 && totalAttempts % keyRotator.getKeyCount() === 0) {
+                currentModelIndex++;
             }
+            await new Promise(resolve => setTimeout(resolve, 300));
         }
     }
 

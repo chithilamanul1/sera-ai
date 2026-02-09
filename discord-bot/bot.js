@@ -137,7 +137,8 @@ const commands = {
                 { name: '📱 WhatsApp', value: stats.whatsappStatus === 'connected' ? '✅ Connected' : '⚠️ Check Logs', inline: true },
                 { name: '⏱️ Uptime', value: `${hours}h ${minutes}m`, inline: true },
                 { name: '📨 Messages Today', value: `${stats.messagesHandled}`, inline: true },
-                { name: '❌ Errors Today', value: `${stats.errorsToday}`, inline: true }
+                { name: '❌ Errors Today', value: `${stats.errorsToday}`, inline: true },
+                { name: '🔑 Gemini Keys (DB)', value: `${Object.keys(res.data?.geminiKeys || {}).length} active`, inline: true }
             )
             .setFooter({ text: 'Seranex Lanka AI System' })
             .setTimestamp();
@@ -161,7 +162,8 @@ const commands = {
                 { name: '`!sera unmute <phone>`', value: '🔊 Unmute AI for a customer', inline: false },
                 { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
                 { name: '`!sera broadcast <message>`', value: '📢 Send newsletter to all customers', inline: false },
-                { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false }
+                { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false },
+                { name: '`!sera key <0-10|master> <key>`', value: '🔑 Update Gemini API key dynamically', inline: false }
             )
             .setFooter({ text: 'Use commands in the control channel' })
             .setTimestamp();
@@ -428,6 +430,34 @@ const commands = {
 
         } catch (err) {
             await statusMsg.edit(`❌ Broadcast Failed: ${err.message}`);
+        }
+    },
+
+    async key(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+
+        const index = args[0]; // 0, 1, 2... or 'master'
+        const keyValue = args[1];
+
+        if (!index || !keyValue) {
+            return message.reply('❌ Usage: `!sera key <0-10|master> <NEW_KEY>`');
+        }
+
+        const dbKey = index === 'master' ? 'master' : `index_${index}`;
+
+        try {
+            const res = await axios.post(`${API_URL}/api/settings`, {
+                geminiKeys: { [dbKey]: keyValue }
+            });
+
+            if (res.status === 200) {
+                await message.reply(`✅ API Key **${index}** updated successfully! The system will pick it up within 5 minutes or on next request.`);
+                await logToChannel('success', 'Gemini Key Updated', { index, by: message.author.tag });
+            } else {
+                await message.reply(`❌ Failed to update key: ${res.data.error || 'Unknown error'}`);
+            }
+        } catch (err) {
+            await message.reply(`❌ API Error: ${err.message}`);
         }
     }
 };
