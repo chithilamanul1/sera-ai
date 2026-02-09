@@ -12,6 +12,7 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, EmbedBuilder, Events } from 'discord.js';
 import axios from 'axios';
 import pm2 from 'pm2';
+import fs from 'fs';
 
 // ===============================================
 // CONFIGURATION
@@ -152,12 +153,11 @@ const commands = {
             .addFields(
                 { name: '`!sera status`', value: 'Show system status and health', inline: false },
                 { name: '`!sera logs`', value: 'Show recent error logs', inline: false },
-                { name: '`!sera stats`', value: 'Show message statistics', inline: false },
-                { name: '`!sera ping`', value: 'Check bot latency', inline: false },
-                { name: '`!sera pause`', value: '⚠️ Pause AI responses (Admin)', inline: false },
-                { name: '`!sera resume`', value: '⚠️ Resume AI responses (Admin)', inline: false },
-                { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
+                { name: '`!sera logs <id> [error]`', value: '📋 View last 20 lines of logs', inline: false },
+                { name: '`!sera stop <id>`', value: '🛑 Stop a PM2 process', inline: false },
+                { name: '`!sera start <id>`', value: '🚀 Start a stopped process', inline: false },
                 { name: '`!sera restart <id>`', value: '🔄 Restart a PM2 process', inline: false },
+                { name: '`!sera pm2`', value: '📊 View PM2 Process Status', inline: false },
                 { name: '`!sera qr`', value: 'Get WhatsApp QR code link', inline: false }
             )
             .setFooter({ text: 'Use commands in the control channel' })
@@ -225,8 +225,74 @@ const commands = {
         await message.reply('📱 Check the Railway logs for the QR code, or wait for a Discord notification when a new code is generated.\n\nIf you see a distorted QR in logs, the notification will include a **clickable link** to a clean QR image.');
     },
 
-    async logs(message) {
-        await message.reply('📋 Recent logs are automatically posted to this channel. Check the messages above for any errors or warnings.');
+    async logs(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) {
+            return message.reply('❌ Unauthorized.');
+        }
+
+        const appId = args[0];
+        const isErrorLog = args[1] === 'error' || args[1] === 'err';
+
+        if (!appId) return message.reply('❌ Use: `!sera logs <id> [error]`');
+
+        pm2.connect((err) => {
+            if (err) return message.reply(`❌ PM2 Error: ${err.message}`);
+
+            pm2.describe(appId, (err, desc) => {
+                pm2.disconnect();
+                if (err || !desc || desc.length === 0) return message.reply(`❌ Process **${appId}** not found.`);
+
+                const logPath = isErrorLog ? desc[0].pm2_env.pm_err_log_path : desc[0].pm2_env.pm_out_log_path;
+
+                if (!fs.existsSync(logPath)) return message.reply('❌ Log file not found.');
+
+                // Read last 3KB of the log file
+                const stats = fs.statSync(logPath);
+                const size = stats.size;
+                const bufferSize = Math.min(size, 3000);
+                const buffer = Buffer.alloc(bufferSize);
+                const fd = fs.openSync(logPath, 'r');
+                fs.readSync(fd, buffer, 0, bufferSize, Math.max(0, size - bufferSize));
+                fs.closeSync(fd);
+
+                const logContent = buffer.toString('utf8');
+                const finalLogs = logContent.split('\n').slice(-20).join('\n');
+
+                const embed = new EmbedBuilder()
+                    .setColor(isErrorLog ? 0xE74C3C : 0x3498DB)
+                    .setTitle(`📋 ${isErrorLog ? 'Error' : 'Output'} Logs: ${desc[0].name}`)
+                    .setDescription(`\`\`\`${isErrorLog ? 'bash' : 'text'}\n${finalLogs.substring(0, 1950)}\n\`\`\``)
+                    .setTimestamp();
+
+                message.reply({ embeds: [embed] });
+            });
+        });
+    },
+
+    async stop(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+        const appId = args[0];
+        if (!appId) return message.reply('❌ Specify ID.');
+
+        pm2.connect((err) => {
+            pm2.stop(appId, (err) => {
+                pm2.disconnect();
+                message.reply(err ? `❌ Error: ${err.message}` : `🛑 Stopped **${appId}**`);
+            });
+        });
+    },
+
+    async start(message, args) {
+        if (!ADMIN_IDS.includes(message.author.id)) return message.reply('❌ Unauthorized.');
+        const appId = args[0];
+        if (!appId) return message.reply('❌ Specify ID.');
+
+        pm2.connect((err) => {
+            pm2.start(appId, (err) => {
+                pm2.disconnect();
+                message.reply(err ? `❌ Error: ${err.message}` : `🚀 Started **${appId}**`);
+            });
+        });
     },
 
     async pm2(message) {
