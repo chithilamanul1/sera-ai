@@ -27,10 +27,7 @@ import { MongoStore } from 'wwebjs-mongo';
 // CONFIGURATION
 // ===============================================
 
-const SERANEX_API = process.env.SERANEX_API ||
-    (process.env.RAILWAY_PUBLIC_DOMAIN
-        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/whatsapp/incoming`
-        : 'http://localhost:3000/api/whatsapp/incoming');
+const SERANEX_API = process.env.SERANEX_API || 'http://localhost:3000/api/whatsapp/incoming';
 const ADMIN_PHONES = (process.env.ADMIN_PHONES || '94768290477,94772148511').split(',');
 const DISCORD_CONSOLE_WEBHOOK = process.env.DISCORD_CONSOLE_WEBHOOK || '';
 const MONGODB_URI = process.env.MONGODB_URI;
@@ -122,6 +119,12 @@ log('info', 'Seranex Lanka WhatsApp Bot Starting...');
 log('info', `API Endpoint: ${SERANEX_API}`);
 if (DISCORD_CONSOLE_WEBHOOK) {
     log('success', `Discord Logging Enabled: ${DISCORD_CONSOLE_WEBHOOK.substring(0, 40)}...`);
+    // Test the webhook immediately
+    logToDiscord('success', '🤖 WhatsApp Bot Process Started', {
+        api_endpoint: SERANEX_API,
+        node_env: process.env.NODE_ENV,
+        platform: process.platform
+    });
 } else {
     log('warning', 'Discord Logging DISABLED (Webhook missing)');
 }
@@ -311,6 +314,9 @@ client.on('message', async (message) => {
 
         // Skip status broadcasts
         if (CONFIG.IGNORE_STATUS && message.from === 'status@broadcast') {
+            if (CONFIG.LOG_MESSAGES) {
+                console.log(`[DEBUG] Skipped status broadcast from ${message.from}`);
+            }
             return;
         }
 
@@ -324,6 +330,9 @@ client.on('message', async (message) => {
 
         // Skip messages from self
         if (message.fromMe) {
+            if (CONFIG.LOG_MESSAGES) {
+                console.log(`[DEBUG] Skipped message from self (fromMe: true)`);
+            }
             return;
         }
 
@@ -669,7 +678,7 @@ process.on('SIGINT', async () => {
     process.exit(0);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
     // Better error logging - stringify the whole thing
     const errorDetails = reason ? {
         message: reason.message || 'No message',

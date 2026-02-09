@@ -19,7 +19,7 @@ import axios from 'axios';
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
 const COMMAND_PREFIX = '!sera';
-const API_URL = process.env.SERANEX_API || 'https://sera-ai-production.up.railway.app';
+const API_URL = process.env.SERANEX_API || 'http://localhost:3000';
 
 // Allowed admin user IDs
 const ADMIN_IDS = (process.env.DISCORD_ADMIN_IDS || '').split(',');
