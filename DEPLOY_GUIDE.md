@@ -71,3 +71,25 @@ pm2 save
 - `pm2 status`: View process status.
 - `pm2 restart seranex-bot`: Restart only the bot.
 - `pm2 restart seranex-api`: Restart only the API.
+
+## 6. 🚀 How to Update (Pull New Changes)
+
+Whenever I push new changes to GitHub, run these commands on your VM to update:
+
+```bash
+cd ~/seraauto
+
+# 1. Pull latest code
+git pull origin main
+
+# 2. Re-install dependencies (in case they changed)
+npm install
+cd whatsapp-bot && npm install
+cd ..
+
+# 3. Re-build the Next.js API
+npm run build
+
+# 4. Restart everything
+pm2 restart all
+```
