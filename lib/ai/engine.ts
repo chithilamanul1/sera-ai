@@ -354,7 +354,7 @@ async function callGeminiRobust(
         for (const modelName of models.slice(0, 2)) { // Try Flash and Flash-Lite first
             try {
                 console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
                 const response = await axios.post(url, payload, {
                     timeout: 10000,
                     family: 4,
@@ -392,7 +392,7 @@ async function callGeminiRobust(
 
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentKey}`;
 
         try {
             console.log(`[GeminiEngine] 🛡️ ROTATION: Attempting ${modelName} with Key #${keyIndex + 1}...`);
@@ -443,7 +443,7 @@ async function callGeminiRobust(
             const backupKey = keyRotator.getTier3Key(i);
             const modelName = 'gemini-1.5-flash'; // Use the most robust/cheap model for emergency
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${backupKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${backupKey}`;
                 const response = await axios.post(url, payload, { timeout: 15000, family: 4 });
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return { text: response.data.candidates[0].content.parts[0].text, model: `${modelName}-backup` };

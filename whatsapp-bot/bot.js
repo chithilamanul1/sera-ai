@@ -22,6 +22,8 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
 import moment from 'moment';
+// Fallback if moment is not correctly bound in some environments
+const momentFixed = moment.default || moment;
 
 // --- DATABASE MODELS ---
 const MutedContactSchema = new mongoose.Schema({
@@ -857,8 +859,8 @@ function initializeHandlers() {
 
     // 1. Morning Motivation & Exam Countdown (6:00 AM)
     cron.schedule('0 6 * * *', async () => {
-        const today = moment();
-        const examDay = moment(EXAM_DATE);
+        const today = momentFixed();
+        const examDay = momentFixed(EXAM_DATE);
         const daysLeft = examDay.diff(today, 'days');
 
         const message = `🌅 *Good Morning, Boss!* \n\n` +

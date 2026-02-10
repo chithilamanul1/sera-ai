@@ -87,7 +87,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
         for (const modelName of models.slice(0, 2)) {
             try {
                 console.log(` [Seranex] 🎙️ FAST LANE Voice: Attempting ${modelName}...`);
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
                 const response = await axios.post(url, {
                     contents: [{
                         role: 'user',
@@ -121,7 +121,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
         const modelName = models[currentModelIndex % models.length];
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentKey}`;
 
         try {
             console.log(` [Seranex] 🎙️ ROTATION Voice: Attempting ${modelName} with Key #${keyIndex + 1}...`);
