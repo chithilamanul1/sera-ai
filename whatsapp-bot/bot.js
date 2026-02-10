@@ -132,7 +132,7 @@ async function logToDiscord(level, message, details = null) {
 // ===============================================
 
 let client;
-const clientId = 'sera-bot-production'; // Unique ID for RemoteAuth/LocalAuth persistence
+const clientId = 'sera-bot-v2'; // Changed to force fresh session
 
 async function startBot() {
     try {
@@ -840,6 +840,15 @@ function initializeHandlers() {
 
         log('error', 'Unhandled Rejection:', errorDetails);
         logToDiscord('error', 'Unhandled Promise Rejection', errorDetails);
+    });
+
+    process.on('uncaughtException', (err) => {
+        log('error', 'Uncaught Exception:', err.message);
+        logToDiscord('error', 'Uncaught Exception', {
+            message: err.message,
+            stack: err.stack
+        });
+        // optional: process.exit(1); // PM2 will restart, but logging it first is key
     });
 
     // ===============================================
