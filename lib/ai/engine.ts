@@ -265,8 +265,8 @@ export async function generateAIResponse(
                     finalResponseText = rawText.replace(jsonMatch[0], "").trim();
                     // Basic action support for fallback
                     if (data.action === 'REPLY_USER' && data.text) finalResponseText = data.text;
-                } catch (jsonErr) {
-                    console.warn("[AI] Fallback JSON parse failed", jsonErr);
+                } catch (jsonErr: unknown) {
+                    console.warn("[AI] Fallback JSON parse failed", (jsonErr as Error).message);
                     finalResponseText = rawText;
                 }
             } else {
@@ -424,7 +424,7 @@ async function callGeminiRobust(
                 await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
             } else if (response?.status === 404 || response?.status === 400) {
                 // HARD FAILURE: Model does not exist or invalid request
-                console.error(`[GeminiEngine] ❌ Model ${modelName} appears broken (${response.status}). Removing from rotation.`);
+                console.error(`[GeminiEngine] ❌ Model ${modelName} appears broken (${response.status}). URL: ${url}`);
                 failedModels.add(modelName);
             }
 
