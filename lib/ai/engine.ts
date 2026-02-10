@@ -22,6 +22,9 @@ import axios from 'axios';
 import keyRotator from '../seranex/gemini-keys';
 export { keyRotator };
 
+// Circuit Breaker: Track models that return 404s/400s to avoid retrying them
+const failedModels = new Set<string>();
+
 export interface AIResponse {
     text: string;
     usedModel: string;
@@ -338,11 +341,11 @@ async function callGeminiRobust(
     }
 
     // Models to rotate through
+    // Models to rotate through (Stable versions only)
     const models = [
-        'gemini-2.0-flash',
-        'gemini-2.0-flash-lite',
-        'gemini-1.5-pro-latest',
-        'gemini-1.5-flash-latest'
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-1.0-pro'
     ];
 
     // --- TIER 1: FAST LANE (Master Key / Paid) ---
@@ -378,6 +381,15 @@ async function callGeminiRobust(
 
     while (totalAttempts > 0) {
         const modelName = models[currentModelIndex % models.length];
+
+        // CIRCUIT BREAKER: Skip known broken models
+        if (failedModels.has(modelName)) {
+            console.warn(`[GeminiEngine] ⚠️ Skipping broken model: ${modelName}`);
+            currentModelIndex++;
+            totalAttempts--; // Decrement to prevent infinite loop
+            continue;
+        }
+
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
@@ -410,6 +422,10 @@ async function callGeminiRobust(
 
             if (response?.status === 429) {
                 await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
+            } else if (response?.status === 404 || response?.status === 400) {
+                // HARD FAILURE: Model does not exist or invalid request
+                console.error(`[GeminiEngine] ❌ Model ${modelName} appears broken (${response.status}). Removing from rotation.`);
+                failedModels.add(modelName);
             }
 
             totalAttempts--;
