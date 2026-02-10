@@ -238,17 +238,30 @@ async function startBot() {
         const app = express();
         app.use(express.json());
 
-        app.post('/send-message', async (req, res) => {
-            const { phone, message: text } = req.json();
-            if (!client) return res.status(503).json({ error: 'Client not ready' });
+        app.get('/', (req, res) => {
+            res.send('Seranex Bot is running');
+        });
 
+        app.post('/send-message', async (req, res) => {
             try {
-                const formattedPhone = phone.includes('@c.us') ? phone : `${phone}@c.us`;
-                await client.sendMessage(formattedPhone, text);
-                log('send', `Manual/Broadcast message sent to ${phone}`);
+                const { phone, message } = req.body;
+
+                if (!client) {
+                    return res.status(503).json({ success: false, error: 'Client not ready' });
+                }
+
+                if (!phone || !message) {
+                    return res.status(400).json({ success: false, error: 'Missing phone or message' });
+                }
+
+                const formattedPhone = phone.includes('@c.us') ? phone : `${phone.replace(/\D/g, '')}@c.us`;
+
+                await client.sendMessage(formattedPhone, message);
+                log('send', `API sent message to ${formattedPhone}`);
+
                 res.json({ success: true });
             } catch (err) {
-                log('error', `Failed to send manual message: ${err.message}`);
+                log('error', `Failed to send API message: ${err.message}`);
                 res.status(500).json({ success: false, error: err.message });
             }
         });

@@ -224,14 +224,26 @@ export async function sendWhatsAppToAdmin(
 
     console.log(`[WhatsApp Queue] Added message to ${phone} (${priority} priority)`);
 
-    // If global sendWhatsAppMessage is available (set by bot.js), use it
+    // 1. Try Global (If same process)
     if (typeof global !== 'undefined' && (global as any).sendWhatsAppMessage) {
         try {
             await (global as any).sendWhatsAppMessage(phone, message);
-            console.log(`[WhatsApp] ✅ Sent to ${phone}`);
+            console.log(`[WhatsApp] ✅ Sent to ${phone} (Global)`);
+            return;
         } catch (error: any) {
-            console.error(`[WhatsApp] ❌ Failed to send to ${phone}:`, error.message);
+            console.error(`[WhatsApp] ❌ Failed Global send to ${phone}:`, error.message);
         }
+    }
+
+    // 2. Try HTTP IPC (If separated process)
+    try {
+        await axios.post('http://127.0.0.1:3001/send-message', {
+            phone,
+            message
+        }, { timeout: 5000 });
+        console.log(`[WhatsApp] ✅ Sent to ${phone} (HTTP IPC)`);
+    } catch (error: any) {
+        console.error(`[WhatsApp] ❌ Failed HTTP IPC send to ${phone}:`, error.message);
     }
 }
 

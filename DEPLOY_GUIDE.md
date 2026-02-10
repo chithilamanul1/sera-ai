@@ -78,7 +78,7 @@ Run these commands in order to ensure the latest changes are correctly built and
 
 ```bash
 # Enter the project folder
-cd ~/seraauto
+cd ~/sera-ai
 
 # 1. Pull latest code
 git pull origin main
