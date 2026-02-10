@@ -20,6 +20,7 @@ import { notifyGeminiRateLimit } from '../seranex/notifications';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
 import keyRotator from '../seranex/gemini-keys';
+export { keyRotator };
 
 export interface AIResponse {
     text: string;
