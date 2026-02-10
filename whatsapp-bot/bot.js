@@ -21,6 +21,7 @@ import fs from 'fs';
 import express from 'express';
 import mongoose from 'mongoose';
 import cron from 'node-cron';
+import moment from 'moment';
 
 // --- DATABASE MODELS ---
 const MutedContactSchema = new mongoose.Schema({
@@ -176,11 +177,18 @@ async function startBot() {
                         '--disable-extensions',
                         '--disable-web-security',
                         '--disable-features=IsolateOrigins,site-per-process',
-                        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-breakpad',
+                        '--disable-component-extensions-with-background-pages',
+                        '--disable-ipc-flooding-protection',
+                        '--disable-renderer-backgrounding',
+                        '--enable-features=NetworkService,NetworkServiceInProcess'
                     ]
                 },
                 authTimeoutMs: 120000,
-                qrMaxRetries: 15
+                qrMaxRetries: 30
             });
 
             client.on('remote_session_saved', () => {
@@ -209,7 +217,14 @@ async function startBot() {
                         '--disable-extensions',
                         '--disable-web-security',
                         '--disable-features=IsolateOrigins,site-per-process',
-                        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                        '--user-agent=Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        '--disable-background-timer-throttling',
+                        '--disable-backgrounding-occluded-windows',
+                        '--disable-breakpad',
+                        '--disable-component-extensions-with-background-pages',
+                        '--disable-ipc-flooding-protection',
+                        '--disable-renderer-backgrounding',
+                        '--enable-features=NetworkService,NetworkServiceInProcess'
                     ]
                 },
                 authTimeoutMs: 120000,
@@ -640,7 +655,7 @@ function initializeHandlers() {
                     const speech = await axios.post(SERANEX_API.replace('/incoming', '/speak'), {
                         text: aiReply
                     }, {
-                        timeout: 30000 // 30 seconds timeout for TTS
+                        timeout: 60000 // 60 seconds timeout for TTS (Increased from 30s)
                     });
 
                     log('info', `✅ TTS Generated (Provider: ${speech.data.provider})`);

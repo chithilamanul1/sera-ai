@@ -21,7 +21,7 @@ import fs from 'fs';
 const DISCORD_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const LOG_CHANNEL_ID = process.env.DISCORD_LOG_CHANNEL_ID;
 const COMMAND_PREFIX = '!sera';
-const API_URL = process.env.SERANEX_API_BASE || 'http://localhost:3000';
+const API_URL = process.env.SERANEX_API_BASE || 'http://127.0.0.1:3000';
 
 // Allowed admin user IDs
 const ADMIN_IDS = (process.env.DISCORD_ADMIN_IDS || '').split(',');
@@ -121,19 +121,24 @@ const commands = {
         let keyStats = { active: 0, backup: 0 };
 
         try {
-            const res = await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
-            if (res.status === 200) {
+            const healthRes = await axios.get(`${API_URL}/api/health`, { timeout: 8000 });
+            if (healthRes.status === 200) {
                 apiHealth = '✅ Online';
                 stats.apiStatus = 'online';
-                if (res.data?.geminiKeys) {
-                    keyStats = res.data.geminiKeys;
+                // Health response might contain key counts
+                if (healthRes.data?.geminiKeys) {
+                    keyStats = healthRes.data.geminiKeys;
+                } else if (healthRes.data?.stats) {
+                    keyStats.active = healthRes.data.stats.activeKeys || 0;
+                    keyStats.backup = healthRes.data.stats.backupKeys || 0;
                 }
             } else {
                 apiHealth = '⚠️ Degraded';
             }
-        } catch (_err) {
+        } catch (err) {
             apiHealth = '❌ Offline';
             stats.apiStatus = 'offline';
+            console.error('[Status] Health check failed:', err.message);
         }
 
         const embed = new EmbedBuilder()
@@ -147,8 +152,8 @@ const commands = {
                 { name: '⏱️ Uptime', value: `${hours}h ${minutes}m`, inline: true },
                 { name: '📨 Messages Today', value: `${stats.messagesHandled}`, inline: true },
                 { name: '❌ Errors Today', value: `${stats.errorsToday}`, inline: true },
-                { name: '🔑 Primary Keys', value: `${keyStats.active}`, inline: true },
-                { name: '🗄️ Backup Keys', value: `${keyStats.backup}`, inline: true }
+                { name: '🔑 Primary Keys', value: String(keyStats.active || 0), inline: true },
+                { name: '🗄️ Backup Keys', value: String(keyStats.backup || 0), inline: true }
             )
             .setFooter({ text: 'Seranex Lanka AI System' })
             .setTimestamp();

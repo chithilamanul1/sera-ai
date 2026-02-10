@@ -384,7 +384,22 @@ export async function executePlaceOrder(args: { items: { name: string, quantity?
             status: OrderStatus.PENDING,
             notes: `Address: ${args.delivery_address}`
         });
-        await logToDiscord('New Order Placed', `Order ${newOrder.shortId} for ${args.customer_name}`, 'SUCCESS');
+        const orderMsg = `Order ${newOrder.shortId} for ${args.customer_name}`;
+        await logToDiscord('New Order Placed', orderMsg, 'SUCCESS');
+
+        // --- WHATSAPP NOTIFICATION TO RIYON ---
+        if (getGlobal().sendWhatsAppMessage) {
+            const riyonMsg = `🆕 *New Order Received!*\n\n` +
+                `🆔 *ID*: ${newOrder.shortId}\n` +
+                `👤 *Customer*: ${args.customer_name}\n` +
+                `📞 *Phone*: ${args.phone}\n` +
+                `📍 *Address*: ${args.delivery_address}\n` +
+                `📦 *Items*: ${args.items.map(i => `${i.name}${i.quantity ? ` (x${i.quantity})` : ''}`).join(', ')}\n\n` +
+                `Check the panel for details! 🚀`;
+
+            await getGlobal().sendWhatsAppMessage(TEAM_ROLES.CO_OWNER, riyonMsg);
+        }
+
         return { success: true, orderId: newOrder.shortId, message: `Order eka confirm kala. ID: ${newOrder.shortId}` };
     } catch (error) {
         console.error("Order Failed", error);

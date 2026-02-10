@@ -13,7 +13,7 @@ If you don't have permission to create Service Account keys, use this method. It
    - Click "Set up with Cloud Build".
    - Select "GitHub" as the provider.
    - Select your repository (`seraauto`).
-5. **Build Configuration**:
+5. **Build Configuration   **:
    - **Branch**: `^main$` (or your primary branch).
    - **Build Type**: Select **Dockerfile**.
    - **Source Context**: `/Dockerfile` (Leave it as default `/`).
