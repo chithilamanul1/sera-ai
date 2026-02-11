@@ -63,6 +63,7 @@ export async function generateAIResponse(
     contextData: { phone?: string, customerName?: string; customerId?: string | undefined } = {},
     systemPromptOverride?: string // Added for dynamic prompts
 ): Promise<AIResponse> {
+    console.log(`[AI-DIAGNOSTIC] generateAIResponse entry (v10)`);
 
     // Log User Message
     if (contextData.customerId) {
@@ -278,7 +279,7 @@ export async function generateAIResponse(
         } catch (openaiError: unknown) {
             const err = openaiError as Error;
             console.error(`[AI] OpenAI also failed:`, err.message);
-            finalResponseText = "Sorry, technical error.";
+            finalResponseText = "🛑 Sorry, technical error (v10). Please report this to admin.";
             finalModel = 'error';
         }
     }
@@ -352,9 +353,13 @@ async function callGeminiRobust(
     const masterKey = keyRotator.getMasterKey();
     if (masterKey) {
         for (const modelName of models.slice(0, 2)) { // Try Flash and Flash-Lite first
+            // Fast Lane also respects the circuit breaker
+            if (failedModels.has(modelName)) continue;
+
             try {
-                console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
                 const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
+                console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
+
                 const response = await axios.post(url, payload, {
                     timeout: 10000,
                     family: 4,
@@ -366,9 +371,17 @@ async function callGeminiRobust(
                 }
             } catch (err: unknown) {
                 const axiosError = err as Record<string, unknown>;
-                console.log(` [Seranex] 🎙️ Fast Lane Voice (${modelName}) Fail.`);
                 const response = axiosError?.response as Record<string, unknown>;
-                if (response?.status === 429) {
+                const status = response?.status || 'UNKNOWN';
+
+                console.log(` [Seranex] 🎙️ Fast Lane Fail (${modelName}) Status: ${status}`);
+
+                if (status === 404 || status === 400) {
+                    console.error(`[GeminiEngine] ❌ Fast Lane Model ${modelName} broken. URL: https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?...`);
+                    failedModels.add(modelName);
+                }
+
+                if (status === 429) {
                     await notifyGeminiRateLimit(modelName, masterKey.substring(masterKey.length - 4), 0);
                 }
             }
@@ -424,7 +437,7 @@ async function callGeminiRobust(
                 await notifyGeminiRateLimit(modelName, currentKey.substring(currentKey.length - 4), keyIndex);
             } else if (response?.status === 404 || response?.status === 400) {
                 // HARD FAILURE: Model does not exist or invalid request
-                console.error(`[GeminiEngine] ❌ Model ${modelName} appears broken (${response.status}). URL: ${url}`);
+                console.error(`[GeminiEngine] ❌ Model ${modelName} broken (${response.status}). TARGET URL: ${url}`);
                 failedModels.add(modelName);
             }
 
