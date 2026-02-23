@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'no_text' });
         }
 
+        // Extract phone number from JID (format: 94771234567@s.whatsapp.net)
+        const phoneNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+
         // --- AI AUTO-PAUSE LOGIC ---
         // Detect if the message was sent by the owner (manual reply from the phone)
         const isFromMe = body.data?.key?.fromMe || body.fromMe || false;
