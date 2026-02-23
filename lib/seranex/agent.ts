@@ -1,4 +1,5 @@
 import { Conversation, BotSettings, PendingQuote, Order } from '@/models/Seranex';
+import Customer from '@/models/Customer';
 import { sendDiscordNotification, sendWhatsAppToAdmin, sendConsoleLog } from './notifications';
 import { generateQuotePDF } from '@/lib/pdf-service';
 import dbConnect from '@/lib/db';
@@ -220,6 +221,18 @@ export async function handleAdminCommand(phone: string, messageText: string): Pr
             const text = args.join(' ');
             if (!text) return `❌ Usage: !sera voice <text to speak>`;
             return `[SEND_AS_VOICE]${text}`;
+        }
+
+        case 'unpause': {
+            const customerPhone = args[0];
+            if (!customerPhone) return `❌ Usage: !sera unpause <phone_number>`;
+
+            await Customer.findOneAndUpdate(
+                { phoneNumber: customerPhone },
+                { isAiPaused: false }
+            );
+
+            return `✅ AI RE-ACTIVATED for ${customerPhone}.\nSera will now respond to their messages again! 🤖`;
         }
 
         case 'settings': {

@@ -1,64 +1,67 @@
-# 🚀 Seranex Auto: Google Cloud (Vercel Style) Setup Guide
+# 🚀 Seranex AI - GCP Deployment Guide
 
-This guide explains how to get a "Push to Deploy" setup like Vercel using Google Cloud Run.
+This guide explains how to deploy the Seranex AI system to Google Cloud Platform (GCP).
 
-## 1. Method A: Cloud Build Trigger (Easiest & No Keys Needed!)
+## 1. Prerequisites
 
-If you don't have permission to create Service Account keys, use this method. It's exactly like Vercel's GitHub integration.
+- A GCP Account and Project.
+- Google Cloud SDK (`gcloud`) installed.
+- Docker installed (if using Cloud Run).
 
-1. **Go to Cloud Run**: In the [GCP Console](https://console.cloud.google.com/run).
-2. **Create Service**: Click "Create Service".
-3. **Connect Source**: Select "Continuously deploy new revisions from a source repository".
-4. **Setup Cloud Build**:
-   - Click "Set up with Cloud Build".
-   - Select "GitHub" as the provider.
-   - Select your repository (`seraauto`).
-5. **Build Configuration   **:
-   - **Branch**: `^main$` (or your primary branch).
-   - **Build Type**: Select **Dockerfile**.
-   - **Source Context**: `/Dockerfile` (Leave it as default `/`).
-6. **Cloud Run Settings**:
-   - **Autoscaling**: Min 1 instance (Required for WhatsApp bot persistence).
-   - **Ingress**: "Allow all traffic".
-   - **Authentication**: "Allow unauthenticated invocations".
-   - **Container Port**: `3000`.
-   - **CPU**: "Always allocated".
+## 2. Deployment Options
 
----
+### Option A: Google Cloud Run (Recommended)
 
-## 2. Method B: GitHub Actions (Requires Keys)
+Cloud Run is the easiest way to deploy this Next.js app.
 
-(Use this only if you prefer managing the build in GitHub and have `IAM Admin` permissions)
+1. **Build and Submit Image**:
 
-Add these to your **GitHub Repository Settings > Secrets and Variables > Actions**:
+   ```bash
+   gcloud builds submit --tag gcr.io/[PROJECT_ID]/seraauto
+   ```
 
-- `GCP_PROJECT_ID`: Your Project ID (e.g., `seraauto-12345`).
-- `GCP_SA_KEY`: Paste the entire content of that JSON key you downloaded.
+2. **Deploy**:
 
-## 3. Deployment Configuration (The Docker Way)
+   ```bash
+   gcloud run deploy seraauto \
+     --image gcr.io/[PROJECT_ID]/seraauto \
+     --platform managed \
+     --region us-central1 \
+     --allow-unauthenticated
+   ```
 
-I have already created:
+### Option B: Compute Engine (VPS)
 
-- [Dockerfile](file:///e:/desktop/seraauto/Dockerfile): Bundles the API and WhatsApp Bot.
-- [deploy.yml](file:///e:/desktop/seraauto/.github/workflows/deploy.yml): The GitHub Action that triggers on push.
+If you prefer a standard VM:
 
-### Why this is better than a VM?
+1. Create a VM instance (e2-medium recommended).
+2. Install Node.js & Docker.
+3. Clone the repo and run with PM2 or Docker Compose.
 
-- **Auto-Scaling**: Only uses resources when needed (though we keep 1 instance alive for WhatsApp).
-- **Vercel Experience**: Just `git push origin main` and watch the magic happen.
-- **Rollbacks**: Each push creates a revision. You can roll back in 1 click.
+## 3. Environment Variables (Critical)
 
-## 4. Database (IMPORTANT)
+You MUST set these variables in the GCP Console (Cloud Run -> Edit & Deploy New Revision -> Variables):
 
-Do NOT host MongoDB inside the container.
+| Variable | Description |
+|----------|-------------|
+| `MONGODB_URI` | Your MongoDB connection string. |
+| `ZAPTOBOX_URL` | Your Zaptobox instance URL. |
+| `ZAPTOBOX_TOKEN` | Your Zaptobox secret token. |
+| `DISCORD_WEBHOOK_URL` | Webhook for error logs. |
+| `OPENAI_API_KEY` | OpenAI Key. |
+| `GEMINI_API_KEY` | Primary Gemini Key. |
+| `GROQ_API_KEY` | Groq Key. |
+| `SAMBANOVA_API_KEY` | SambaNova Key. |
+| `NVIDIA_API_KEY` | NVIDIA Key. |
 
-1. Use **MongoDB Atlas** (Free tier is fine).
-2. Add your `MONGODB_URI` to the Cloud Run environment variables in the GCP Console.
+## 4. Webhook Configuration
 
-## 5. Persistence (WhatsApp Session)
+Once deployed, copy your Service URL (e.g., `https://seraauto-xyz.a.run.app`) and update your Zaptobox dashboard:
 
-Cloud Run instances are "ephemeral". If the instance restarts, you will have to scan the QR code again.
-**Solution**:
+- **Webhook URL**: `https://your-url.a.run.app/api/whatsapp/zaptobox`
 
-- In the future, we can mount a "Cloud Storage" bucket to keep the `.wwebjs_auth` folder persistent.
-- For now, scanning once per deploy is the simplest way.
+## 5. Manual AI Override
+
+The system automatically pauses the AI for a customer if you (the owner) reply manually from your WhatsApp app. To unpause, use the admin command:
+
+- `!unpause [phone_number]`

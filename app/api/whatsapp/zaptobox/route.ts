@@ -3,6 +3,8 @@ import { generateAIResponse } from '@/lib/ai/engine';
 import Customer from '@/models/Customer';
 import dbConnect from '@/lib/db';
 import axios from 'axios';
+import { sendConsoleLog } from '@/lib/seranex/notifications';
+import { addMessage, getHistory } from '@/lib/seranex/agent';
 
 const ZAPTOBOX_URL = process.env.ZAPTOBOX_URL || 'http://localhost:3333';
 const ZAPTOBOX_TOKEN = process.env.ZAPTOBOX_TOKEN || 'seraauto_zaptobox_secret_token_2026';
@@ -31,9 +33,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'no_message' });
         }
 
-        // Extract phone number from JID (format: 94771234567@s.whatsapp.net)
-        const phoneNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@g.us', '');
-
         // Get message text
         const messageText = message.conversation ||
             message.extendedTextMessage?.text ||
@@ -44,9 +43,38 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ status: 'no_text' });
         }
 
+        // --- AI AUTO-PAUSE LOGIC ---
+        // Detect if the message was sent by the owner (manual reply from the phone)
+        const isFromMe = body.data?.key?.fromMe || body.fromMe || false;
+
+        if (isFromMe) {
+            console.log(`[ZapToBox] Detected manual reply for ${phoneNumber}. Pausing AI & Saving history...`);
+
+            // 1. Save owner message to history so AI can read it later
+            await addMessage(phoneNumber, 'assistant', messageText);
+
+            // 2. Pause AI
+            await Customer.findOneAndUpdate(
+                { phoneNumber },
+                { isAiPaused: true },
+                { upsert: true }
+            );
+
+            await sendConsoleLog('warn', `AI PAUSED for customer ${phoneNumber}`, {
+                reason: 'Manual reply from owner detected',
+                message: messageText
+            });
+
+            return NextResponse.json({ status: 'ai_paused_by_owner' });
+        }
+
+        // --- INCOMING MESSAGE HANDLING ---
         console.log(`[ZapToBox] Message from ${phoneNumber}: ${messageText}`);
 
-        // Find or create customer
+        // 1. Save user message to history
+        await addMessage(phoneNumber, 'user', messageText);
+
+        // 2. Find or create customer
         let customer = await Customer.findOne({ phoneNumber });
         if (!customer) {
             customer = await Customer.create({
@@ -56,16 +84,26 @@ export async function POST(req: NextRequest) {
             });
         }
 
-        // Check if AI is paused for this customer
+        // 3. AUTO-UNPAUSE LOGIC
+        // If customer replies while AI is paused, automatically unpause it
         if (customer.isAiPaused) {
-            console.log(`[ZapToBox] AI paused for ${phoneNumber}`);
-            return NextResponse.json({ status: 'ai_paused' });
+            console.log(`[ZapToBox] Customer ${phoneNumber} replied. Automatically unpausing AI...`);
+            customer.isAiPaused = false;
+            await customer.save();
+
+            await sendConsoleLog('info', `AI AUTO-UNPAUSED for customer ${phoneNumber}`, {
+                reason: 'Customer replied to manual conversation'
+            });
         }
 
-        // Generate AI response
+        // 4. FETCH HISTORY (Analyze last 10 messages)
+        const history = await getHistory(phoneNumber, 10);
+        console.log(`[ZapToBox] Fetched ${history.length} history items for context.`);
+
+        // 5. Generate AI response with history context
         const aiResponse = await generateAIResponse(
             messageText,
-            [], // No history for now
+            history.map(m => ({ role: m.role as 'user' | 'assistant' | 'system' | 'model', content: m.content })),
             {
                 phone: phoneNumber,
                 customerName: customer.name,
@@ -73,8 +111,11 @@ export async function POST(req: NextRequest) {
             }
         );
 
-        // Send reply via ZapToBox API
+        // 6. Send reply via ZapToBox API
         await sendZapToBoxMessage(remoteJid, aiResponse.text);
+
+        // 7. Save AI reply to history
+        await addMessage(phoneNumber, 'assistant', aiResponse.text);
 
         return NextResponse.json({
             status: 'success',

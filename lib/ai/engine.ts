@@ -1,4 +1,14 @@
-import { MODEL_GEMINI, openai, MODEL_OPENAI } from './config';
+import {
+    MODEL_GEMINI,
+    openai,
+    MODEL_OPENAI,
+    MODEL_GROQ,
+    MODEL_SAMBANOVA,
+    MODEL_NVIDIA,
+    GROQ_API_KEY,
+    SAMBANOVA_API_KEY,
+    NVIDIA_API_KEY
+} from './config';
 import { SYSTEM_PROMPT } from './prompts';
 import {
     routeTask,
@@ -16,7 +26,7 @@ import {
     approveMarketing,
     sendLocation
 } from './functions';
-import { notifyGeminiRateLimit } from '../seranex/notifications';
+import { notifyGeminiRateLimit, sendErrorToDiscord } from '../seranex/notifications';
 import ChatLog, { ChatRole } from '@/models/ChatLog';
 import axios from 'axios';
 import keyRotator from '../seranex/gemini-keys';
@@ -91,10 +101,10 @@ export async function generateAIResponse(
 
 
 
-        // --- GEMINI CALL (With Key Rotation & Robust Logic) ---
-        const geminiRes = await callGeminiRobust(userMessage, history, promptToUse);
-        const rawText = geminiRes.text;
-        finalModel = geminiRes.model;
+        // --- TASK-BASED ROUTING & MULTI-PROVIDER FALLBACK ---
+        const aiRes = await callSuitableProvider(userMessage, history, promptToUse);
+        const rawText = aiRes.text;
+        finalModel = aiRes.model;
 
         // --- JSON PARSING (GOD MODE) ---
         // Look for JSON block at the end
@@ -279,7 +289,12 @@ export async function generateAIResponse(
         } catch (openaiError: unknown) {
             const err = openaiError as Error;
             console.error(`[AI] OpenAI also failed:`, err.message);
-            finalResponseText = "🛑 Sorry, technical error (v10). Please report this to admin.";
+
+            // Detailed error for admin
+            const failureReason = `All AI backends failed.\nGemini error: ${error}\nOpenAI error: ${err.message}`;
+            await sendErrorToDiscord(failureReason, 'CRITICAL: TOTAL AI EXHAUSTION (v10)');
+
+            finalResponseText = "🛑 I'm having some technical trouble connecting to my AI brain (v10). Please send your request again in a moment or contact my human manager! 🙏";
             finalModel = 'error';
         }
     }
@@ -344,6 +359,7 @@ async function callGeminiRobust(
     // Models to rotate through
     // Models to rotate through (Stable versions only)
     const models = [
+        'gemini-2.0-flash',
         'gemini-1.5-flash',
         'gemini-1.5-pro',
         'gemini-1.0-pro'
@@ -468,4 +484,119 @@ async function callGeminiRobust(
     }
 
     throw new Error('All Gemini keys (Primary, Backup, and Emergency) exhausted in Engine.');
+}
+
+/**
+ * Call generic OpenAI-compatible APIs (Groq, SambaNova, NVIDIA)
+ */
+async function callOpenAICompatible(
+    url: string,
+    key: string,
+    model: string,
+    systemPrompt: string,
+    history: { role: string; content: string }[],
+    userMessage: string
+): Promise<string> {
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        ...history.map(m => ({
+            role: (m.role === 'assistant' || m.role === 'model') ? 'assistant' : 'user',
+            content: m.content || ''
+        })),
+        { role: 'user', content: userMessage }
+    ];
+
+    const response = await axios.post(
+        url,
+        {
+            model: model,
+            messages: messages,
+            temperature: 0.7,
+            max_tokens: 800
+        },
+        {
+            headers: {
+                'Authorization': `Bearer ${key}`,
+                'Content-Type': 'application/json'
+            },
+            timeout: 10000
+        }
+    );
+
+    return response.data?.choices?.[0]?.message?.content || "";
+}
+
+/**
+ * Route to suitable provider based on task context
+ */
+async function callSuitableProvider(
+    userMessage: string,
+    history: { role: string; content: string }[],
+    prompt: string
+): Promise<{ text: string, model: string }> {
+    // 1. Task Detection
+    const isSlang = detectLanguageStyle(userMessage) === "SINGLISH";
+    const isFinancial = userMessage.toLowerCase().includes("keeyada") || userMessage.toLowerCase().includes("ganan") || userMessage.toLowerCase().includes("price");
+
+    // Priority Map:
+    // - Complex/Finance/JSON: Gemini 2.0 (High Intelligence)
+    // - Fast Chat/Slang: SambaNova/Groq (Lowest Latency)
+
+    const providers = [];
+
+    if (isFinancial) {
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+    } else if (isSlang) {
+        providers.push({
+            name: 'SAMBANOVA',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
+                model: MODEL_SAMBANOVA
+            })
+        });
+        providers.push({
+            name: 'GROQ',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                model: MODEL_GROQ
+            })
+        });
+    }
+
+    // Default Waterfall if specific detection fails or for broad coverage
+    providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+    providers.push({
+        name: 'SAMBANOVA',
+        call: async () => ({
+            text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
+            model: MODEL_SAMBANOVA
+        })
+    });
+    providers.push({
+        name: 'GROQ',
+        call: async () => ({
+            text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+            model: MODEL_GROQ
+        })
+    });
+    providers.push({
+        name: 'NVIDIA',
+        call: async () => ({
+            text: await callOpenAICompatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY!, MODEL_NVIDIA, prompt, history, userMessage),
+            model: MODEL_NVIDIA
+        })
+    });
+
+    let lastError: any = null;
+    for (const provider of providers) {
+        try {
+            console.log(`[AI-ROUTER] Attempting ${provider.name}...`);
+            return await provider.call();
+        } catch (err: any) {
+            console.warn(`[AI-ROUTER] ${provider.name} failed:`, err.message);
+            lastError = err;
+        }
+    }
+
+    throw lastError || new Error("All suitable providers failed.");
 }
