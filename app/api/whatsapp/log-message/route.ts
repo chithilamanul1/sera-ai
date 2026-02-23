@@ -14,6 +14,17 @@ export async function POST(req: NextRequest) {
         console.log(`[LogMsg] Logging ${role} message for ${phone}`);
         await addMessage(phone, role || 'assistant', message);
 
+        // If it's a manual reply from the owner, pause AI
+        if (role === 'assistant') {
+            const Customer = (await import('@/models/Customer')).default;
+            await Customer.findOneAndUpdate(
+                { phoneNumber: phone },
+                { isAiPaused: true },
+                { upsert: true }
+            );
+            console.log(`[LogMsg] AI Paused for ${phone} due to manual reply.`);
+        }
+
         return NextResponse.json({ success: true });
     } catch (error: unknown) {
         const err = error as Error;

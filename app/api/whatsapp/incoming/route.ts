@@ -73,6 +73,17 @@ export async function POST(req: NextRequest) {
         // Get or create conversation
         const conv = await getConversation(phone);
 
+        // --- AI AUTO-RECOVERY (UNPAUSE) LOGIC ---
+        // If AI was paused (manual override), unpause it automatically when customer replies
+        const CustomerModel = (await import('@/models/Customer')).default;
+        const customer = await CustomerModel.findOne({ phoneNumber: phone });
+
+        if (customer?.isAiPaused) {
+            console.log(`[Seranex] 🕒 AI was paused for ${phone}. Auto-unpausing and catching up...`);
+            await CustomerModel.findOneAndUpdate({ phoneNumber: phone }, { isAiPaused: false });
+            // The context analysis happens naturally because we fetch history below
+        }
+
         // ===============================================
         // ADMIN COMMANDS
         // ===============================================

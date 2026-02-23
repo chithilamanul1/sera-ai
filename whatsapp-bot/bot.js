@@ -441,13 +441,14 @@ function initializeHandlers() {
                 }
 
                 const myPhone = message.to.replace('@c.us', '');
-                // Send to API to log the message without triggering a reply
+                // Send to API to log the message and trigger AI Auto-Pause
                 try {
                     await axios.post(SERANEX_API.replace('/incoming', '/log-message'), {
                         phone: myPhone,
                         message: message.body,
-                        role: 'assistant'
+                        role: 'assistant' // This triggers the auto-pause on the server
                     });
+                    log('info', `[Auto-Pause] Logged manual reply for ${myPhone}. AI will step back.`);
                 } catch (e) {
                     console.error('Failed to log own message:', e.message);
                 }
