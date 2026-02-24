@@ -166,7 +166,7 @@ global.sendWhatsAppMessage = async (phone, message) => {
 // ===============================================
 
 async function startBot() {
-    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.2) Starting...');
+    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.3) Starting...');
     log('info', `API Endpoint: ${SERANEX_API}`);
 
     if (MONGODB_URI) {
@@ -186,11 +186,25 @@ async function startBot() {
 
         const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
+        // Fetch latest version to avoid "Connection Failure"
+        let version = [2, 3000, 1015901307];
+        try {
+            const { version: latestVersion, isLatest } = await fetchLatestBaileysVersion();
+            version = latestVersion;
+            log('info', `Using WhatsApp Version: ${version.join('.')} (Latest: ${isLatest})`);
+        } catch (vErr) {
+            log('warning', `Failed to fetch latest version, using fallback: ${version.join('.')}`);
+        }
+
         sock = makeWASocket({
+            version,
             auth: state,
             logger: pino({ level: 'silent' }),
             browser: ['Seranex Auto', 'Chrome', '1.0.0'],
-            printQRInTerminal: false // We use our own QR handler now
+            printQRInTerminal: false,
+            connectTimeoutMs: 60000,
+            defaultQueryTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -213,18 +227,24 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-            const reason = lastDisconnect?.error?.message || 'Unknown';
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const reason = lastDisconnect?.error?.message || 'Unknown Reason';
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
-            log('warning', `Connection closed. Reason: ${reason}, Reconnect: ${shouldReconnect}`);
+            log('warning', `Connection closed. Status: ${statusCode}, Reason: ${reason}, Reconnect: ${shouldReconnect}`);
 
-            if (reason.includes('Connection Failure')) {
-                log('error', '⚠️ CRITICAL: Connection Failure detected. This usually means the "baileys_auth_info" folder is corrupt or can\'t reach WhatsApp servers.');
+            // Log full error for deep debugging
+            if (lastDisconnect?.error) {
+                console.log('   [DEBUG] Full Connection Error:', JSON.stringify(lastDisconnect.error, null, 2).substring(0, 1000));
+            }
+
+            if (statusCode === 401 || reason.includes('Connection Failure')) {
+                log('error', '⚠️ CRITICAL: Authorization or Connection Failure. If this persists, delete "baileys_auth_info" and scan QR again.');
             }
 
             if (shouldReconnect) {
-                log('info', '🔄 Reconnecting in 5 seconds...');
-                setTimeout(() => startBot(), 5000); // 5s delay to avoid spam loops
+                log('info', '🔄 Reconnecting in 10 seconds...');
+                setTimeout(() => startBot(), 10000);
             } else {
                 log('error', '🚨 Logged out! You must delete the "baileys_auth_info" folder and restart to generate a new QR.');
             }
