@@ -571,7 +571,8 @@ async function callSuitableProvider(
         console.log(`[AI-ROUTER] 🌅 Image payload detected. Rigidly routing to Gemini Vision.`);
         providers.push({ name: 'GEMINI_VISION', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
     } else {
-        // Text / All Other Requests -> Route primarily to Groq (Llama 3.3) for speed and stability
+        // User requested: Gemini first, Groq second, SambaNova third (Nvidia added at the end)
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
         providers.push({
             name: 'GROQ',
             call: async () => ({
@@ -586,7 +587,6 @@ async function callSuitableProvider(
                 model: MODEL_SAMBANOVA
             })
         });
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
     }
     providers.push({
         name: 'NVIDIA',
