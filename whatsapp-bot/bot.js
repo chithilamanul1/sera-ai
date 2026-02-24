@@ -14,7 +14,12 @@ import pino from 'pino';
 
 // Baileys imports
 import pkg from '@whiskeysockets/baileys';
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage } = pkg;
+// Defensive extraction for ESM/CJS interop
+const makeWASocket = pkg.default || pkg;
+const useMultiFileAuthState = pkg.useMultiFileAuthState || pkg.default?.useMultiFileAuthState;
+const DisconnectReason = pkg.DisconnectReason || pkg.default?.DisconnectReason;
+const downloadMediaMessage = pkg.downloadMediaMessage || pkg.default?.downloadMediaMessage;
+const fetchLatestBaileysVersion = pkg.fetchLatestBaileysVersion || pkg.default?.fetchLatestBaileysVersion;
 
 const momentFixed = moment.default || moment;
 

@@ -75,7 +75,7 @@ export async function generateAIResponse(
     imageBase64?: string,
     mimeType?: string
 ): Promise<AIResponse> {
-    console.log(`[AI-DIAGNOSTIC] generateAIResponse entry (v11)`);
+    console.log(`[AI-DIAGNOSTIC] generateAIResponse entry (v12)`);
 
     // Log User Message
     if (contextData.customerId) {
