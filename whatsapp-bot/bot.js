@@ -23,6 +23,7 @@ const useMultiFileAuthState = Baileys.useMultiFileAuthState || Baileys.default?.
 const DisconnectReason = Baileys.DisconnectReason || Baileys.default?.DisconnectReason;
 const downloadMediaMessage = Baileys.downloadMediaMessage || Baileys.default?.downloadMediaMessage;
 const fetchLatestBaileysVersion = Baileys.fetchLatestBaileysVersion || Baileys.default?.fetchLatestBaileysVersion;
+const qrcode = require('qrcode-terminal');
 
 console.log(`[Diagnostic] Baileys loaded via require. Keys:`, Object.keys(Baileys));
 if (typeof useMultiFileAuthState !== 'function') {
@@ -166,7 +167,7 @@ global.sendWhatsAppMessage = async (phone, message) => {
 // ===============================================
 
 async function startBot() {
-    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.4) Starting...');
+    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.5) Starting...');
     log('info', `Working Directory: ${process.cwd()}`);
     log('info', `API Endpoint: ${SERANEX_API}`);
 
@@ -223,6 +224,11 @@ async function startBot() {
         if (qr) {
             const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`;
             log('info', '📱 WhatsApp QR Code generated');
+
+            // Print ASCII QR to terminal
+            qrcode.generate(qr, { small: true });
+            console.log(`\n🔗 QR Image URL: ${qrImageUrl}\n`);
+
             logToDiscord('info', '🔐 WhatsApp Login QR Available', {
                 message: 'Scan this QR code with your phone (Linked Devices) to log in.',
                 qr_link: qrImageUrl
