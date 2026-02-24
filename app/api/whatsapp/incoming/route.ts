@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
+import { supabase } from '@/lib/supabase';
+
 
 import dbConnect from '@/lib/db';
 import {
@@ -50,8 +52,7 @@ export async function POST(req: NextRequest) {
         await dbConnect();
         const body = await req.json();
 
-        const { phone, message, name, imageBase64, mimeType } = body;
-
+        const { phone, botNumber, message, name, imageBase64, mimeType } = body;
 
         if (!phone) {
             return NextResponse.json({ error: 'Missing phone' }, { status: 400 });
@@ -84,8 +85,35 @@ export async function POST(req: NextRequest) {
         if (customer?.isAiPaused) {
             console.log(`[Seranex] 🕒 AI was paused for ${phone}. Auto-unpausing and catching up...`);
             await CustomerModel.findOneAndUpdate({ phoneNumber: phone }, { isAiPaused: false });
-            // The context analysis happens naturally because we fetch history below
         }
+
+        // ===============================================
+        // MULTI-TENANT CLIENT LOOKUP (SUPABASE BRIDGE)
+        // ===============================================
+        let client = null;
+        if (botNumber) {
+            // Search in Xera's Supabase 'tenants' table
+            const cleanBotNumber = botNumber.replace(/\D/g, '');
+            const { data: tenantData, error: tError } = await supabase
+                .from('tenants')
+                .select('*')
+                .or(`business_phone.ilike.%${cleanBotNumber}%,owner_phone.ilike.%${cleanBotNumber}%`)
+                .limit(1)
+                .single();
+
+            if (tenantData) {
+                client = tenantData;
+                console.log(`[Seranex] 🏢 Client Identified via Supabase: ${client.name} (UUID: ${client.id})`);
+                // Use the UUID as string for MongoDB conversation link (to maintain compatibility with other logic)
+                await Conversation.findOneAndUpdate({ phone }, { clientId: client.id });
+            } else {
+                if (tError && tError.code !== 'PGRST116') { // PGRST116 is 'no rows returned'
+                    console.error('[Seranex] ❌ Supabase Tenant Lookup Error:', tError);
+                }
+                console.log(`[Seranex] ⚠️ No client found in Supabase for botNumber: ${botNumber}.`);
+            }
+        }
+
 
         // ===============================================
         // ADMIN COMMANDS
@@ -180,8 +208,30 @@ export async function POST(req: NextRequest) {
         const customInstructions = await getSetting('custom_instructions') || '';
         const priceGuidelines = await getSetting('price_guidelines') || '';
 
-        // Build system prompt with customizations
-        let systemPrompt = generateSystemPrompt(); // Dynamic base prompt
+        // Build system prompt
+        let systemPrompt = '';
+
+        if (client && client.dynamic_system_prompt) {
+            // USE CLIENT'S SPECIALIZED MASSIVE PROMPT FROM SUPABASE
+            systemPrompt = client.dynamic_system_prompt;
+
+            // Inject inventory if available from Supabase 'products' table
+            const { data: products } = await supabase
+                .from('products')
+                .select('name, price, description')
+                .eq('tenant_id', client.id)
+                .limit(20);
+
+            if (products && products.length > 0) {
+                const inventoryList = products.map(p => `- ${p.name}: LKR ${p.price} (${p.description || 'No description'})`).join('\n');
+                systemPrompt += `\n\n### 📦 LIVE INVENTORY / PRODUCT LIST\n${inventoryList}`;
+                console.log(`[Seranex] 📦 Injected ${products.length} products into AI context`);
+            }
+        } else {
+            // FALLBACK TO BASE GENERATOR
+            systemPrompt = generateSystemPrompt();
+        }
+
 
         // --- 🧠 INJECT USER MEMORY (THE BOND) ---
         if (userProfile.interests && userProfile.interests.length > 0) {
@@ -292,10 +342,13 @@ export async function POST(req: NextRequest) {
                 console.log(`[Seranex] ⚡ Captured ${aiActions.length} God Mode actions.`);
             }
 
-        } catch (aiError: any) { // Explicitly keeping any for AI error objects
-            console.error(`[Seranex] ❌ AI Error:`, aiError.message);
+        } catch (aiError: Error | unknown) {
+            const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown error';
+            console.error(`[Seranex] ❌ AI Error:`, errorMessage);
 
-            await sendErrorToDiscord(aiError, 'AI Generation Failed');
+            if (aiError instanceof Error) {
+                await sendErrorToDiscord(aiError, 'AI Generation Failed');
+            }
 
             // Fallback response
             reply = 'Sorry, I\'m having a moment! 🙏 Please try again or contact us directly at +94 76 829 0477\n\nසමාවන්න, මොහොතක් රැඳී නැවත උත්සාහ කරන්න.';
@@ -353,8 +406,9 @@ export async function POST(req: NextRequest) {
                         });
                     }
                 }
-            } catch (orderError: any) {
-                console.error('[Seranex] ❌ Failed to parse order tag:', orderError.message);
+            } catch (orderError: Error | unknown) {
+                const errorMessage = orderError instanceof Error ? orderError.message : 'Unknown error';
+                console.error('[Seranex] ❌ Failed to parse order tag:', errorMessage);
             }
         }
 
@@ -370,8 +424,9 @@ export async function POST(req: NextRequest) {
                     // Notify Admins in Discord beautifully
                     await sendErrorToDiscord(new Error(`Amount: LKR ${receiptData.amount}\nRef: ${receiptData.reference_number}\nDate: ${receiptData.date}\nBank: ${receiptData.bank}\nCustomer: ${name} (${phone})`), '[AI RECEIPT SCANNER] Payment Captured');
                 }
-            } catch (receiptError: any) {
-                console.error('[Seranex] ❌ Failed to parse receipt tag:', receiptError.message);
+            } catch (receiptError: Error | unknown) {
+                const errorMessage = receiptError instanceof Error ? receiptError.message : 'Unknown error';
+                console.error('[Seranex] ❌ Failed to parse receipt tag:', errorMessage);
             }
         }
 
@@ -440,7 +495,10 @@ export async function POST(req: NextRequest) {
 // ===============================================
 
 export async function GET() {
-    const stats = await getBotStats().catch(() => ({}));
+    const stats = await getBotStats().catch((err: Error | unknown) => {
+        console.error('Stats catch error:', err);
+        return {};
+    });
 
     return NextResponse.json({
         status: 'Seranex Lanka AI Ready',

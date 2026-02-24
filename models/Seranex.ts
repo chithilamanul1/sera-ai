@@ -38,12 +38,14 @@ export interface IConversation extends Document {
         language: 'en' | 'si' | 'singlish';
         bondLevel: number;
     };
+    clientId?: mongoose.Types.ObjectId; // Link to Client
     createdAt: Date;
     updatedAt: Date;
 }
 
 const ConversationSchema = new Schema<IConversation>({
     phone: { type: String, required: true, unique: true, index: true },
+    clientId: { type: Schema.Types.ObjectId, ref: 'Client', index: true },
     messages: [{
         role: { type: String, enum: ['user', 'assistant', 'system'] },
         content: String,
@@ -86,6 +88,7 @@ export interface IOrder extends Document {
         total: number;
         advance: number;
     };
+    clientId: mongoose.Types.ObjectId;
     status: 'pending_payment' | 'payment_received' | 'in_progress' | 'completed' | 'cancelled';
     paymentStatus: 'pending' | 'partial' | 'full';
     discordNotified: boolean;
@@ -94,6 +97,7 @@ export interface IOrder extends Document {
 
 const OrderSchema = new Schema<IOrder>({
     phone: { type: String, required: true },
+    clientId: { type: Schema.Types.ObjectId, ref: 'Client', index: true },
     customerName: { type: String, default: 'Customer' },
     requirements: { type: Schema.Types.Mixed },
     quotation: {

@@ -566,28 +566,55 @@ async function callSuitableProvider(
 
     const providers = [];
 
-    // Multimodal Override: Llama 3.3 (Groq) does not support images yet. Route strictly to Gemini Flash.
+    // Multimodal Override: Llama 3.3 (Groq/SambaNova) does not support images yet. Route strictly to Gemini Vision.
     if (imageBase64) {
         console.log(`[AI-ROUTER] 🌅 Image payload detected. Rigidly routing to Gemini Vision.`);
         providers.push({ name: 'GEMINI_VISION', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
     } else {
-        // User requested: Gemini first, Groq second, SambaNova third (Nvidia added at the end)
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
-        providers.push({
-            name: 'GROQ',
-            call: async () => ({
-                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
-                model: MODEL_GROQ
-            })
-        });
-        providers.push({
-            name: 'SAMBANOVA',
-            call: async () => ({
-                text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
-                model: MODEL_SAMBANOVA
-            })
-        });
+        // --- SMART LANGUAGE-BASED ROUTING ---
+        // 1. If English -> SambaNova (Cheaper/Faster, good at English) -> Groq -> Gemini
+        // 2. If Sinhala/Singlish -> Gemini (Better local language Nuance) -> Groq -> SambaNova
+
+        const langStyle = detectLanguageStyle(userMessage);
+
+        if (langStyle === "ENGLISH") {
+            console.log(`[AI-ROUTER] 🇬🇧 English detected. Prioritizing SambaNova to save credits.`);
+            providers.push({
+                name: 'SAMBANOVA',
+                call: async () => ({
+                    text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
+                    model: MODEL_SAMBANOVA
+                })
+            });
+            providers.push({
+                name: 'GROQ',
+                call: async () => ({
+                    text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                    model: MODEL_GROQ
+                })
+            });
+            providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+        } else {
+            console.log(`[AI-ROUTER] 🇱🇰 Sinhala/Singlish detected. Prioritizing Gemini for native context.`);
+            providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+            providers.push({
+                name: 'GROQ',
+                call: async () => ({
+                    text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                    model: MODEL_GROQ
+                })
+            });
+            providers.push({
+                name: 'SAMBANOVA',
+                call: async () => ({
+                    text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
+                    model: MODEL_SAMBANOVA
+                })
+            });
+        }
     }
+
+    // Safety fallback
     providers.push({
         name: 'NVIDIA',
         call: async () => ({

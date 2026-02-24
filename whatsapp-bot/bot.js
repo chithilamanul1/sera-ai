@@ -247,8 +247,8 @@ async function startBot() {
                 console.log('   [DEBUG] Full Connection Error:', JSON.stringify(lastDisconnect.error, null, 2).substring(0, 1000));
             }
 
-            if (statusCode === 401 || reason.includes('Connection Failure')) {
-                log('error', '⚠️ CRITICAL: Authorization or Connection Failure. If this persists, delete "baileys_auth_info" and scan QR again.');
+            if (statusCode === 401 || reason.includes('Connection Failure') || statusCode === 515) {
+                log('error', '⚠️ CRITICAL: Authorization or Fatal Sync Error (515). If this persists, delete "baileys_auth_info" and scan QR again.');
             }
 
             if (shouldReconnect) {
@@ -256,11 +256,28 @@ async function startBot() {
                 setTimeout(() => startBot(), 10000);
             } else {
                 log('error', '🚨 Logged out! You must delete the "baileys_auth_info" folder and restart to generate a new QR.');
+                process.exit(1); // Force PM2 to restart the process fully on logout
             }
         } else if (connection === 'open') {
             log('success', 'Seranex Lanka WhatsApp Bot is READY!');
             log('info', '📨 Listening for incoming messages...');
             logToDiscord('success', 'Bot is now online and ready (Baileys Engine)');
+        }
+    });
+
+    // ===============================================
+    // CRITICAL: CATCH SILENT SYNC FAILURES
+    // ===============================================
+    sock.ev.on('messaging-history.set', () => {
+        log('success', '📥 Messaging history synced successfully. Decryption keys are confirmed active.');
+    });
+
+    // Catch unhandled errors that don't trigger 'connection.close'
+    sock.ev.on('error', (err) => {
+        log('error', `[System Engine Error] ${err.message}`, err);
+        if (err.message.includes('MAC') || err.message.includes('decrypt')) {
+            log('error', '🚨 FATAL DECRYPTION ERROR DETECTED! The connection is corrupt. Forcing system restart...');
+            process.exit(1); // Force PM2 to restart and attempt a clean connection loop
         }
     });
 
@@ -293,27 +310,42 @@ async function startBot() {
             if (!msg.message) continue;
 
             const remoteJid = msg.key.remoteJid;
+            const fromMe = msg.key.fromMe;
+
+            // Debug: Log raw message type
+            const rawType = Object.keys(msg.message)[0];
+            if (CONFIG.LOG_MESSAGES && !fromMe) {
+                console.log(`[DEBUG] 📩 Raw Message Type: ${rawType} from ${remoteJid}`);
+            }
+
             const isGroup = remoteJid.includes('@g.us');
             const isStatus = remoteJid === 'status@broadcast';
 
             if (CONFIG.IGNORE_STATUS && isStatus) continue;
             if (CONFIG.IGNORE_GROUPS && isGroup) {
-                if (CONFIG.LOG_MESSAGES) log('warning', `Ignored group message from ${remoteJid}`);
+                if (CONFIG.LOG_MESSAGES && !fromMe) log('warning', `Ignored group message from ${remoteJid}`);
                 continue;
             }
 
-            const fromMe = msg.key.fromMe;
             const phoneNumber = remoteJid.replace('@s.whatsapp.net', '').replace('@c.us', '');
             const customerName = msg.pushName || 'Customer';
 
-            // Extract text/media content properly
+            // Extract text/media content properly (with unwrapping)
             let messageText = '';
             let isVoice = false;
             let mimeType = '';
             let imageBase64 = null;
 
-            const messageType = Object.keys(msg.message)[0];
-            const realMessage = msg.message[messageType];
+            // Unwrap ephemeral/viewOnce messages
+            let messageContent = msg.message;
+            if (messageContent.ephemeralMessage) messageContent = messageContent.ephemeralMessage.message;
+            if (messageContent.viewOnceMessage) messageContent = messageContent.viewOnceMessage.message;
+            if (messageContent.viewOnceMessageV2) messageContent = messageContent.viewOnceMessageV2.message;
+
+            if (!messageContent) continue;
+
+            const messageType = Object.keys(messageContent)[0];
+            const realMessage = messageContent[messageType];
 
             if (messageType === 'conversation') {
                 messageText = realMessage;
@@ -328,8 +360,10 @@ async function startBot() {
                 isVoice = realMessage.ptt || false;
                 mimeType = realMessage.mimetype;
             } else {
+                if (CONFIG.LOG_MESSAGES && !fromMe) console.log(`[DEBUG] 🗒️ Unhandled type: ${messageType}`);
                 continue; // System message, etc
             }
+
 
             // If I sent the message manually from phone
             if (fromMe && remoteJid) {
@@ -436,8 +470,12 @@ async function startBot() {
             let aiActions = [];
 
             try {
+                // Get bot's own number for multi-tenant identification
+                const botNumber = sock.user?.id.split(':')[0] || process.env.BOT_PHONE;
+
                 const response = await axios.post(SERANEX_API, {
                     phone: phoneNumber,
+                    botNumber: botNumber, // Added for multi-tenancy
                     message: messageText || (imageBase64 ? '[IMAGE_ATTACHED]' : ''),
                     name: customerName,
                     isVoice: isVoice,
