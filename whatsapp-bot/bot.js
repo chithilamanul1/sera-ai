@@ -166,7 +166,8 @@ global.sendWhatsAppMessage = async (phone, message) => {
 // ===============================================
 
 async function startBot() {
-    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.3) Starting...');
+    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.4) Starting...');
+    log('info', `Working Directory: ${process.cwd()}`);
     log('info', `API Endpoint: ${SERANEX_API}`);
 
     if (MONGODB_URI) {
@@ -204,7 +205,9 @@ async function startBot() {
             printQRInTerminal: false,
             connectTimeoutMs: 60000,
             defaultQueryTimeoutMs: 60000,
-            keepAliveIntervalMs: 30000
+            keepAliveIntervalMs: 30000,
+            retryRequestDelayMs: 5000,
+            generateHighQualityLinkPreview: false
         });
 
         sock.ev.on('creds.update', saveCreds);
