@@ -570,36 +570,8 @@ async function callSuitableProvider(
     if (imageBase64) {
         console.log(`[AI-ROUTER] 🌅 Image payload detected. Rigidly routing to Gemini Vision.`);
         providers.push({ name: 'GEMINI_VISION', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
-    } else if (isFinancial || userMessage.toLowerCase().includes("order")) {
-        // Complex tasks MUST go to Gemini first
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
-        providers.push({
-            name: 'GROQ',
-            call: async () => ({
-                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
-                model: MODEL_GROQ
-            })
-        });
-    } else if (isSlang || detectLanguageStyle(userMessage) === "SINHALA_SCRIPT") {
-        // Casual casual chat in local languages MUST go to Llama first (Groq is Llama 3.3)
-        providers.push({
-            name: 'GROQ',
-            call: async () => ({
-                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
-                model: MODEL_GROQ
-            })
-        });
-        providers.push({
-            name: 'SAMBANOVA',
-            call: async () => ({
-                text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
-                model: MODEL_SAMBANOVA
-            })
-        });
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
     } else {
-        // Default English Waterfall
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
+        // Text / All Other Requests -> Route primarily to Groq (Llama 3.3) for speed and stability
         providers.push({
             name: 'GROQ',
             call: async () => ({
@@ -614,14 +586,15 @@ async function callSuitableProvider(
                 model: MODEL_SAMBANOVA
             })
         });
-        providers.push({
-            name: 'NVIDIA',
-            call: async () => ({
-                text: await callOpenAICompatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY!, MODEL_NVIDIA, prompt, history, userMessage),
-                model: MODEL_NVIDIA
-            })
-        });
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
     }
+    providers.push({
+        name: 'NVIDIA',
+        call: async () => ({
+            text: await callOpenAICompatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY!, MODEL_NVIDIA, prompt, history, userMessage),
+            model: MODEL_NVIDIA
+        })
+    });
 
     let lastError: any = null;
     for (const provider of providers) {
