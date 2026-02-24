@@ -321,7 +321,7 @@ async function callGeminiRobust(
 
     // Construct payload for REST API
     const payload = {
-        system_instruction: {
+        systemInstruction: {
             parts: [{ text: sysPrompt || SYSTEM_PROMPT }]
         },
         contents: [] as { role: string; parts: { text: string }[] }[],
