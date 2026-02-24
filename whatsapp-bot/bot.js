@@ -12,17 +12,22 @@ import moment from 'moment';
 import axios from 'axios';
 import pino from 'pino';
 
-// Baileys imports
-import pkg from '@whiskeysockets/baileys';
-console.log(`[Diagnostic] Baileys keys:`, Object.keys(pkg || {}));
-if (pkg?.default) console.log(`[Diagnostic] Baileys default keys:`, Object.keys(pkg.default));
+// Baileys imports (Using createRequire for bulletproof ESM/CJS interop)
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+const Baileys = require('@whiskeysockets/baileys');
 
-// Defensive extraction for ESM/CJS interop
-const makeWASocket = pkg.default || pkg;
-const useMultiFileAuthState = pkg.useMultiFileAuthState || pkg.default?.useMultiFileAuthState;
-const DisconnectReason = pkg.DisconnectReason || pkg.default?.DisconnectReason;
-const downloadMediaMessage = pkg.downloadMediaMessage || pkg.default?.downloadMediaMessage;
-const fetchLatestBaileysVersion = pkg.fetchLatestBaileysVersion || pkg.default?.fetchLatestBaileysVersion;
+// Extract functions (Handling both possible Baileys structures)
+const makeWASocket = Baileys.default || Baileys;
+const useMultiFileAuthState = Baileys.useMultiFileAuthState || Baileys.default?.useMultiFileAuthState;
+const DisconnectReason = Baileys.DisconnectReason || Baileys.default?.DisconnectReason;
+const downloadMediaMessage = Baileys.downloadMediaMessage || Baileys.default?.downloadMediaMessage;
+const fetchLatestBaileysVersion = Baileys.fetchLatestBaileysVersion || Baileys.default?.fetchLatestBaileysVersion;
+
+console.log(`[Diagnostic] Baileys loaded via require. Keys:`, Object.keys(Baileys));
+if (typeof useMultiFileAuthState !== 'function') {
+    console.error(`[CRITICAL] useMultiFileAuthState is NOT a function! Type: ${typeof useMultiFileAuthState}`);
+}
 
 const momentFixed = moment.default || moment;
 
