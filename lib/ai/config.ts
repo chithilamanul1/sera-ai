@@ -26,7 +26,7 @@ export const MODEL_GEMINI = "gemini-2.0-flash";
 
 // --- New Providers ---
 export const MODEL_GROQ = "llama-3.3-70b-versatile";
-export const MODEL_SAMBANOVA = "Meta-Llama-3.1-8B-Instruct";
+export const MODEL_SAMBANOVA = "Meta-Llama-3.3-70B-Instruct";
 export const MODEL_NVIDIA = "meta/llama-3.1-70b-instruct";
 
 export const GROQ_API_KEY = process.env.GROQ_API_KEY || "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";

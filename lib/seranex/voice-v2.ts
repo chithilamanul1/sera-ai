@@ -88,12 +88,12 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
         for (const modelName of models.slice(0, 2)) {
             try {
                 console.log(` [Seranex] 🎙️ FAST LANE Voice: Attempting ${modelName}...`);
-                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
                 const response = await axios.post(url, {
                     contents: [{
                         role: 'user',
                         parts: [
-                            { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                            { inline_data: { data: audioBase64, mime_type: cleanMimeType } },
                             { text: "Transcribe this audio precisely. Sinhala/English/Singlish support. Only return text." }
                         ]
                     }]
@@ -122,7 +122,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
         const modelName = models[currentModelIndex % models.length];
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
-        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
 
         try {
             console.log(` [Seranex] 🎙️ ROTATION Voice: Attempting ${modelName} with Key #${keyIndex + 1}...`);
@@ -131,7 +131,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
                 contents: [{
                     role: 'user',
                     parts: [
-                        { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                        { inline_data: { data: audioBase64, mime_type: cleanMimeType } },
                         { text: "Transcribe precisely. Only return text." }
                     ]
                 }]
@@ -179,7 +179,7 @@ async function transcribeGeminiFallback(audioBase64: string, mimeType: string): 
                     contents: [{
                         role: 'user',
                         parts: [
-                            { inlineData: { data: audioBase64, mimeType: cleanMimeType } },
+                            { inline_data: { data: audioBase64, mime_type: cleanMimeType } },
                             { text: "Transcribe precisely. Only return text." }
                         ]
                     }]
