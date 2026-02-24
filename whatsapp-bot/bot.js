@@ -166,7 +166,7 @@ global.sendWhatsAppMessage = async (phone, message) => {
 // ===============================================
 
 async function startBot() {
-    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.1) Starting...');
+    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.2) Starting...');
     log('info', `API Endpoint: ${SERANEX_API}`);
 
     if (MONGODB_URI) {
@@ -188,9 +188,9 @@ async function startBot() {
 
         sock = makeWASocket({
             auth: state,
-            printQRInTerminal: true,
             logger: pino({ level: 'silent' }),
-            browser: ['Seranex Auto', 'Chrome', '1.0.0']
+            browser: ['Seranex Auto', 'Chrome', '1.0.0'],
+            printQRInTerminal: false // We use our own QR handler now
         });
 
         sock.ev.on('creds.update', saveCreds);
@@ -213,13 +213,18 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            log('warning', 'Connection closed due to', { reason: lastDisconnect.error?.message, shouldReconnect });
-            logToDiscord('error', 'WhatsApp disconnected', { reason: lastDisconnect.error?.message });
+            const reason = lastDisconnect?.error?.message || 'Unknown';
+            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+
+            log('warning', `Connection closed. Reason: ${reason}, Reconnect: ${shouldReconnect}`);
+
+            if (reason.includes('Connection Failure')) {
+                log('error', '⚠️ CRITICAL: Connection Failure detected. This usually means the "baileys_auth_info" folder is corrupt or can\'t reach WhatsApp servers.');
+            }
 
             if (shouldReconnect) {
-                log('info', 'Reconnecting...');
-                startBot();
+                log('info', '🔄 Reconnecting in 5 seconds...');
+                setTimeout(() => startBot(), 5000); // 5s delay to avoid spam loops
             } else {
                 log('error', '🚨 Logged out! You must delete the "baileys_auth_info" folder and restart to generate a new QR.');
             }
