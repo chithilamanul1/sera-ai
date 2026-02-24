@@ -323,17 +323,24 @@ async function callGeminiRobust(
     mimeType?: string
 ): Promise<{ text: string; model: string }> {
 
-    // Construct payload for REST API
+    // Construct payload for REST API - NO SYSTEM INSTRUCTION OBJECT (Fails on some keys/models)
     const payload = {
-        systemInstruction: {
-            parts: [{ text: sysPrompt || SYSTEM_PROMPT }]
-        },
-        contents: [] as { role: string; parts: { text: string }[] }[],
+        contents: [] as { role: string; parts: { text: string; inline_data?: any }[] }[],
         generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 800
         }
     };
+
+    // Inject system prompt natively as the first user message to bypass 400 errors
+    payload.contents.push({
+        role: "user",
+        parts: [{ text: `[SYSTEM PROMPT]:\n${sysPrompt || SYSTEM_PROMPT}\n\n[END SYSTEM PROMPT. Acknowledge and follow these rules.]` }]
+    });
+    payload.contents.push({
+        role: "model",
+        parts: [{ text: "Understood. I will strictly follow these rules and identity." }]
+    });
 
     // Filter and alternate history
     let lastRole = '';
@@ -359,12 +366,12 @@ async function callGeminiRobust(
             }
         } else {
             const parts: any[] = [{ text: userMsg }];
-            if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } });
+            if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } } as any);
             payload.contents.push({ role: 'user', parts: parts });
         }
     } else {
         const parts: any[] = [{ text: userMsg }];
-        if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } });
+        if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } } as any);
         payload.contents.push({ role: 'user', parts: parts });
     }
 
@@ -385,7 +392,7 @@ async function callGeminiRobust(
             if (failedModels.has(modelName)) continue;
 
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
                 console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
 
                 const response = await axios.post(url, payload, {
@@ -433,7 +440,7 @@ async function callGeminiRobust(
 
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentKey}`;
 
         try {
             console.log(`[GeminiEngine] 🛡️ ROTATION: Attempting ${modelName} with Key #${keyIndex + 1}...`);
@@ -484,7 +491,7 @@ async function callGeminiRobust(
             const backupKey = keyRotator.getTier3Key(i);
             const modelName = 'gemini-1.5-flash'; // Use the most robust/cheap model for emergency
             try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${backupKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${backupKey}`;
                 const response = await axios.post(url, payload, { timeout: 15000, family: 4 });
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return { text: response.data.candidates[0].content.parts[0].text, model: `${modelName}-backup` };
