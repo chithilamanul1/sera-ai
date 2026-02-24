@@ -539,14 +539,49 @@ async function callSuitableProvider(
     const isFinancial = userMessage.toLowerCase().includes("keeyada") || userMessage.toLowerCase().includes("ganan") || userMessage.toLowerCase().includes("price");
 
     // Priority Map:
-    // - Complex/Finance/JSON: Gemini 2.0 (High Intelligence)
-    // - Fast Chat/Slang: SambaNova/Groq (Lowest Latency)
+    // - Financial/Orders/Action-Heavy: Gemini 2.0 (High Intelligence JSON)
+    // - Singlish & Sinhala Script: Groq (Llama 3.3) / SambaNova -> Better SL slang generation
+    // - English / Default: Gemini -> Groq
 
     const providers = [];
 
-    if (isFinancial) {
+    if (isFinancial || userMessage.toLowerCase().includes("order")) {
+        // Complex tasks MUST go to Gemini first
         providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
-    } else if (isSlang) {
+        providers.push({
+            name: 'GROQ',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                model: MODEL_GROQ
+            })
+        });
+    } else if (isSlang || detectLanguageStyle(userMessage) === "SINHALA_SCRIPT") {
+        // Casual casual chat in local languages MUST go to Llama first (Groq is Llama 3.3)
+        providers.push({
+            name: 'GROQ',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                model: MODEL_GROQ
+            })
+        });
+        providers.push({
+            name: 'SAMBANOVA',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
+                model: MODEL_SAMBANOVA
+            })
+        });
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+    } else {
+        // Default English Waterfall
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+        providers.push({
+            name: 'GROQ',
+            call: async () => ({
+                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
+                model: MODEL_GROQ
+            })
+        });
         providers.push({
             name: 'SAMBANOVA',
             call: async () => ({
@@ -555,37 +590,13 @@ async function callSuitableProvider(
             })
         });
         providers.push({
-            name: 'GROQ',
+            name: 'NVIDIA',
             call: async () => ({
-                text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
-                model: MODEL_GROQ
+                text: await callOpenAICompatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY!, MODEL_NVIDIA, prompt, history, userMessage),
+                model: MODEL_NVIDIA
             })
         });
     }
-
-    // Default Waterfall if specific detection fails or for broad coverage
-    providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
-    providers.push({
-        name: 'SAMBANOVA',
-        call: async () => ({
-            text: await callOpenAICompatible("https://api.sambanova.ai/v1/chat/completions", SAMBANOVA_API_KEY!, MODEL_SAMBANOVA, prompt, history, userMessage),
-            model: MODEL_SAMBANOVA
-        })
-    });
-    providers.push({
-        name: 'GROQ',
-        call: async () => ({
-            text: await callOpenAICompatible("https://api.groq.com/openai/v1/chat/completions", GROQ_API_KEY!, MODEL_GROQ, prompt, history, userMessage),
-            model: MODEL_GROQ
-        })
-    });
-    providers.push({
-        name: 'NVIDIA',
-        call: async () => ({
-            text: await callOpenAICompatible("https://integrate.api.nvidia.com/v1/chat/completions", NVIDIA_API_KEY!, MODEL_NVIDIA, prompt, history, userMessage),
-            model: MODEL_NVIDIA
-        })
-    });
 
     let lastError: any = null;
     for (const provider of providers) {
