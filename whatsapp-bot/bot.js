@@ -71,7 +71,11 @@ function log(level, message, data = null) {
     console.log(`${prefix} [${timestamp}] ${message}`);
 
     if (data && CONFIG.LOG_MESSAGES) {
-        console.log('   └─', JSON.stringify(data).substring(0, 200));
+        if (data instanceof Error) {
+            console.log('   └─', data.stack || data.message);
+        } else {
+            console.log('   └─', JSON.stringify(data).substring(0, 500));
+        }
     }
 
     if (level === 'error' || level === 'warning') {
@@ -154,7 +158,7 @@ global.sendWhatsAppMessage = async (phone, message) => {
 // ===============================================
 
 async function startBot() {
-    log('info', 'Seranex Lanka WhatsApp Bot (Baileys) Starting...');
+    log('info', 'Seranex Lanka WhatsApp Bot (Baileys v2.1) Starting...');
     log('info', `API Endpoint: ${SERANEX_API}`);
 
     if (MONGODB_URI) {
@@ -166,16 +170,26 @@ async function startBot() {
         }
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState('baileys_auth_info');
+    try {
+        const authPath = './baileys_auth_info';
+        if (!fs.existsSync(authPath)) {
+            fs.mkdirSync(authPath, { recursive: true });
+        }
 
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true, // Auto-prints to console cleanly
-        logger: pino({ level: 'silent' }), // Hide verbose Baileys logs
-        browser: ['Seranex Auto', 'Chrome', '1.0.0']
-    });
+        const { state, saveCreds } = await useMultiFileAuthState(authPath);
 
-    sock.ev.on('creds.update', saveCreds);
+        sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: true,
+            logger: pino({ level: 'silent' }),
+            browser: ['Seranex Auto', 'Chrome', '1.0.0']
+        });
+
+        sock.ev.on('creds.update', saveCreds);
+    } catch (err) {
+        log('error', `Failed to initialize Baileys: ${err.message}`, err);
+        return;
+    }
 
     // Connection Updates (QR / Logged In / Disconnect)
     sock.ev.on('connection.update', (update) => {
