@@ -50,11 +50,14 @@ export async function POST(req: NextRequest) {
         await dbConnect();
         const body = await req.json();
 
-        const { phone, message, name } = body;
+        const { phone, message, name, imageBase64, mimeType } = body;
 
 
-        if (!phone || !message) {
-            return NextResponse.json({ error: 'Missing phone or message' }, { status: 400 });
+        if (!phone) {
+            return NextResponse.json({ error: 'Missing phone' }, { status: 400 });
+        }
+        if (!message && !imageBase64) {
+            return NextResponse.json({ error: 'Missing message or image' }, { status: 400 });
         }
 
         console.log(`\n[Seranex] ━━━━━━━━━━━━━━━━━━━━━`);
@@ -274,7 +277,9 @@ export async function POST(req: NextRequest) {
                     customerName: name || 'Customer',
                     customerId: conv.customerId
                 },
-                systemPrompt // Pass the dynamic system prompt we built
+                systemPrompt, // Pass the dynamic system prompt we built
+                imageBase64,
+                mimeType
             );
 
 
@@ -350,6 +355,23 @@ export async function POST(req: NextRequest) {
                 }
             } catch (orderError: any) {
                 console.error('[Seranex] ❌ Failed to parse order tag:', orderError.message);
+            }
+        }
+
+        // Check for [RECEIPT_LOG: JSON] trigger
+        if (reply.includes('[RECEIPT_LOG:')) {
+            try {
+                const match = reply.match(/\[RECEIPT_LOG:\s*({[\s\S]*?})\s*\]/);
+                if (match && match[1]) {
+                    const receiptData = JSON.parse(match[1]);
+                    reply = reply.replace(/\[RECEIPT_LOG:[\s\S]*?\]/g, '').trim();
+                    console.log(`[Seranex] 🧾 Receipt Processed for ${phone}:`, receiptData);
+
+                    // Notify Admins in Discord beautifully
+                    await sendErrorToDiscord(new Error(`Amount: LKR ${receiptData.amount}\nRef: ${receiptData.reference_number}\nDate: ${receiptData.date}\nBank: ${receiptData.bank}\nCustomer: ${name} (${phone})`), '[AI RECEIPT SCANNER] Payment Captured');
+                }
+            } catch (receiptError: any) {
+                console.error('[Seranex] ❌ Failed to parse receipt tag:', receiptError.message);
             }
         }
 

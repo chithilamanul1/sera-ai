@@ -71,7 +71,9 @@ export async function generateAIResponse(
     userMessage: string,
     history: { role: 'user' | 'assistant' | 'system' | 'model'; content: string }[],
     contextData: { phone?: string, customerName?: string; customerId?: string | undefined } = {},
-    systemPromptOverride?: string // Added for dynamic prompts
+    systemPromptOverride?: string, // Added for dynamic prompts
+    imageBase64?: string,
+    mimeType?: string
 ): Promise<AIResponse> {
     console.log(`[AI-DIAGNOSTIC] generateAIResponse entry (v10)`);
 
@@ -102,7 +104,7 @@ export async function generateAIResponse(
 
 
         // --- TASK-BASED ROUTING & MULTI-PROVIDER FALLBACK ---
-        const aiRes = await callSuitableProvider(userMessage, history, promptToUse);
+        const aiRes = await callSuitableProvider(userMessage, history, promptToUse, imageBase64, mimeType);
         const rawText = aiRes.text;
         finalModel = aiRes.model;
 
@@ -316,7 +318,9 @@ export async function generateAIResponse(
 async function callGeminiRobust(
     userMsg: string,
     hist: { role: string; content: string }[],
-    sysPrompt: string
+    sysPrompt: string,
+    imageBase64?: string,
+    mimeType?: string
 ): Promise<{ text: string; model: string }> {
 
     // Construct payload for REST API
@@ -348,12 +352,20 @@ async function callGeminiRobust(
 
     if (lastRole === 'user') {
         if (payload.contents.length > 0) {
-            payload.contents[payload.contents.length - 1].parts[0].text += `\n\n${userMsg}`;
+            const userParts = payload.contents[payload.contents.length - 1].parts;
+            userParts[0].text += `\n\n${userMsg}`;
+            if (imageBase64) {
+                userParts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } } as any);
+            }
         } else {
-            payload.contents.push({ role: 'user', parts: [{ text: userMsg }] });
+            const parts: any[] = [{ text: userMsg }];
+            if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } });
+            payload.contents.push({ role: 'user', parts: parts });
         }
     } else {
-        payload.contents.push({ role: 'user', parts: [{ text: userMsg }] });
+        const parts: any[] = [{ text: userMsg }];
+        if (imageBase64) parts.push({ inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } });
+        payload.contents.push({ role: 'user', parts: parts });
     }
 
     // Models to rotate through
@@ -373,7 +385,7 @@ async function callGeminiRobust(
             if (failedModels.has(modelName)) continue;
 
             try {
-                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${masterKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${masterKey}`;
                 console.log(`[GeminiEngine] ⚡ FAST LANE: Attempting ${modelName}...`);
 
                 const response = await axios.post(url, payload, {
@@ -421,7 +433,7 @@ async function callGeminiRobust(
 
         const keyIndex = totalAttempts % keyRotator.getKeyCount();
         const currentKey = keyRotator.getBackupKey(keyIndex);
-        const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${currentKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${currentKey}`;
 
         try {
             console.log(`[GeminiEngine] 🛡️ ROTATION: Attempting ${modelName} with Key #${keyIndex + 1}...`);
@@ -472,7 +484,7 @@ async function callGeminiRobust(
             const backupKey = keyRotator.getTier3Key(i);
             const modelName = 'gemini-1.5-flash'; // Use the most robust/cheap model for emergency
             try {
-                const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${backupKey}`;
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${backupKey}`;
                 const response = await axios.post(url, payload, { timeout: 15000, family: 4 });
                 if (response.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
                     return { text: response.data.candidates[0].content.parts[0].text, model: `${modelName}-backup` };
@@ -532,7 +544,9 @@ async function callOpenAICompatible(
 async function callSuitableProvider(
     userMessage: string,
     history: { role: string; content: string }[],
-    prompt: string
+    prompt: string,
+    imageBase64?: string,
+    mimeType?: string
 ): Promise<{ text: string, model: string }> {
     // 1. Task Detection
     const isSlang = detectLanguageStyle(userMessage) === "SINGLISH";
@@ -545,7 +559,11 @@ async function callSuitableProvider(
 
     const providers = [];
 
-    if (isFinancial || userMessage.toLowerCase().includes("order")) {
+    // Multimodal Override: Llama 3.3 (Groq) does not support images yet. Route strictly to Gemini Flash.
+    if (imageBase64) {
+        console.log(`[AI-ROUTER] 🌅 Image payload detected. Rigidly routing to Gemini Vision.`);
+        providers.push({ name: 'GEMINI_VISION', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
+    } else if (isFinancial || userMessage.toLowerCase().includes("order")) {
         // Complex tasks MUST go to Gemini first
         providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
         providers.push({
@@ -571,10 +589,10 @@ async function callSuitableProvider(
                 model: MODEL_SAMBANOVA
             })
         });
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
     } else {
         // Default English Waterfall
-        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt) });
+        providers.push({ name: 'GEMINI', call: () => callGeminiRobust(userMessage, history, prompt, imageBase64, mimeType) });
         providers.push({
             name: 'GROQ',
             call: async () => ({

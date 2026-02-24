@@ -249,6 +249,7 @@ async function startBot() {
             let messageText = '';
             let isVoice = false;
             let mimeType = '';
+            let imageBase64 = null;
 
             const messageType = Object.keys(msg.message)[0];
             const realMessage = msg.message[messageType];
@@ -259,6 +260,7 @@ async function startBot() {
                 messageText = realMessage.text;
             } else if (messageType === 'imageMessage') {
                 messageText = realMessage.caption || '';
+                mimeType = realMessage.mimetype || 'image/jpeg';
             } else if (messageType === 'videoMessage') {
                 messageText = realMessage.caption || '';
             } else if (messageType === 'audioMessage') {
@@ -344,10 +346,24 @@ async function startBot() {
                 }
             }
 
-            // Skip empty messages
-            if (!messageText || messageText.trim() === '') return;
+            // Handle Image Download
+            if (messageType === 'imageMessage') {
+                try {
+                    log('info', `🖼️ Processing image from ${customerName}...`);
+                    const buffer = await downloadMediaMessage(msg, 'buffer', {});
+                    imageBase64 = buffer.toString('base64');
+                } catch (err) {
+                    log('error', `Image download err: ${err.message}`);
+                }
+            }
 
-            log('receive', `${customerName} (${phoneNumber}): ${messageText.substring(0, 80)}...`);
+            // Skip empty messages
+            if ((!messageText || messageText.trim() === '') && !isVoice && !imageBase64) return;
+
+            // Optional message logging
+            let logMsg = messageText ? messageText.substring(0, 80) : '';
+            if (imageBase64) logMsg += ' [IMAGE]';
+            log('receive', `${customerName} (${phoneNumber}): ${logMsg}...`);
 
             // AI Processing
             if (CONFIG.AUTO_TYPING) {
@@ -361,9 +377,11 @@ async function startBot() {
             try {
                 const response = await axios.post(SERANEX_API, {
                     phone: phoneNumber,
-                    message: messageText,
+                    message: messageText || (imageBase64 ? '[IMAGE_ATTACHED]' : ''),
                     name: customerName,
-                    isVoice: isVoice
+                    isVoice: isVoice,
+                    imageBase64: imageBase64,
+                    mimeType: mimeType
                 }, { timeout: CONFIG.TIMEOUT });
 
                 aiReply = response.data.reply || '';
