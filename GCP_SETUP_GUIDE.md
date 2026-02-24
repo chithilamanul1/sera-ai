@@ -14,7 +14,7 @@ This guide explains how to deploy the full Seranex AI system to a Google Cloud C
 
 Connect to your VM and run these commands:
 
-### Step 1: Install Node.js, Git & Puppeteer Dependencies
+### Step 1: Install Node.js, Git & PM2
 
 ```bash
 # Update system
@@ -23,9 +23,6 @@ sudo apt-get update
 # Install Node.js 20 (LTS)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 sudo apt-get install -y nodejs git
-
-# Install Puppeteer/Chrome dependencies (EXHAUSTIVE LIST for WhatsApp Bot)
-sudo apt-get install -y libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 libgbm1 libasound2 libpangocairo-1.0-0 libpango-1.0-0 libxfixes3 libx11-6 libx11-xcb1 libxcb1 libxcursor1 libxi6 libxtst6 libxss1 libgtk-3-0
 
 # Install PM2 globally
 sudo npm install -g pm2

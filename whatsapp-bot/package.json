@@ -15,7 +15,7 @@
         "mongoose": "^9.1.6",
         "node-cron": "^4.2.1",
         "qrcode-terminal": "^0.12.0",
-        "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#main",
-        "wwebjs-mongo": "^1.1.0"
+        "@whiskeysockets/baileys": "^6.7.9",
+        "pino": "^8.20.0"
     }
 }
