@@ -14,6 +14,9 @@ import pino from 'pino';
 
 // Baileys imports
 import pkg from '@whiskeysockets/baileys';
+console.log(`[Diagnostic] Baileys keys:`, Object.keys(pkg || {}));
+if (pkg?.default) console.log(`[Diagnostic] Baileys default keys:`, Object.keys(pkg.default));
+
 // Defensive extraction for ESM/CJS interop
 const makeWASocket = pkg.default || pkg;
 const useMultiFileAuthState = pkg.useMultiFileAuthState || pkg.default?.useMultiFileAuthState;
